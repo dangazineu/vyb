@@ -42,72 +42,58 @@ func (n *Node) TokenCount() int {
 	return n.tokenCount
 }
 
-// BuildTree constructs the hierarchy from a given fs.FS and root path.
+// BuildTree constructs the hierarchy from a given fs.FS and list of path entries.
 // It returns the Node representing the root folder.
-func BuildTree(fsys fs.FS, rootPath string) (*Node, error) {
+func BuildTree(fsys fs.FS, pathEntries []string) (*Node, error) {
+	// The root folder always gets a node, regardless of the shape of the filesystem
 	rootNode := &Node{
-		Name:   rootPath,
+		Name:   ".",
 		Type:   Folder,
 		Parent: nil,
 	}
 
-	// Walk the entire fs to list files.
-	err := fs.WalkDir(fsys, rootPath, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		// Skip the root folder itself.
-		if path == rootPath {
-			return nil
+	for _, entry := range pathEntries {
+		if entry == "" {
+			continue
 		}
 
-		relPath, err := filepath.Rel(rootPath, path)
+		info, err := fs.Stat(fsys, entry)
 		if err != nil {
-			return err
+			return nil, fmt.Errorf("failed to stat path %q: %w", entry, err)
 		}
 
-		// Build nodes as we discover them.
-		if d.IsDir() {
-			n := &Node{
-				Name:     d.Name(),
-				Type:     Folder,
-				Children: []*Node{},
-			}
-			// Insert into parent's children.
-			parentNode := findOrCreateParentNode(rootNode, relPath)
-			if parentNode == nil {
-				return fmt.Errorf("failed to find or create parent node for %s", path)
-			}
-			parentNode.Children = append(parentNode.Children, n)
-			n.Parent = parentNode
+		relPath, err := filepath.Rel(".", entry)
+		if err != nil {
+			return nil, err
+		}
+
+		if info.IsDir() {
+			continue
 		} else {
-			fileBytes, err := fs.ReadFile(fsys, path)
+			// TODO(vyb): instead of reading the file contents while building the tree, do it lazily when requested for the first time. Cache the result on the tokenCount variable to avoid computing it every time.
+			fileBytes, err := fs.ReadFile(fsys, entry)
 			if err != nil {
-				return err
+				return nil, err
 			}
+
 			n := &Node{
-				Name:     d.Name(),
+				Name:     filepath.Base(entry),
 				Type:     File,
 				Children: nil,
-				// We'll compute token count from the content.
 			}
+
 			n.tokenCount, err = getFileTokenCount(fileBytes)
 			if err != nil {
-				return err
+				return nil, err
 			}
 
 			parentNode := findOrCreateParentNode(rootNode, relPath)
 			if parentNode == nil {
-				return fmt.Errorf("failed to find or create parent node for %s", path)
+				return nil, fmt.Errorf("failed to find or create parent node for %s", entry)
 			}
 			parentNode.Children = append(parentNode.Children, n)
 			n.Parent = parentNode
 		}
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
 	}
 
 	// Collapse single-child folders.
@@ -119,18 +105,16 @@ func BuildTree(fsys fs.FS, rootPath string) (*Node, error) {
 // findOrCreateParentNode navigates from the root node down the path minus the last component.
 // For example, if the path is "dir1/dir2/file.txt", the parent node is the node for "dir1/dir2".
 func findOrCreateParentNode(rootNode *Node, relPath string) *Node {
-	// The parent path in the hierarchy is everything except the last segment.
-	// If there's only one segment, the parent is the root.
 	parts := strings.Split(relPath, string(filepath.Separator))
 	if len(parts) < 1 {
 		return rootNode
 	}
+
 	parentParts := parts[:len(parts)-1]
-	// If there are no parent parts, then the parent is root.
 	if len(parentParts) == 0 {
 		return rootNode
 	}
-	// We must navigate down the tree to find or create that folder chain.
+
 	return navigateOrCreate(rootNode, parentParts)
 }
 
@@ -141,7 +125,6 @@ func navigateOrCreate(node *Node, parts []string) *Node {
 	}
 
 	chunk := parts[0]
-	// Find child node matching chunk.
 	var child *Node
 	for _, c := range node.Children {
 		if c.Name == chunk && c.Type == Folder {
@@ -176,7 +159,6 @@ func collapseFolders(n *Node) {
 		return
 	}
 
-	// Recurse on children first.
 	for _, c := range n.Children {
 		collapseFolders(c)
 	}

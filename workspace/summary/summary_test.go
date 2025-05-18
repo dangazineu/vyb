@@ -15,9 +15,16 @@ func TestBuildTree(t *testing.T) {
 		"dir3/dir4/dir5/file3.txt": {Data: []byte("some content")},
 		"dir3/dir4/dir5/file4.txt": {Data: []byte("another file")},
 		"dir3/file5.md":            {Data: []byte("# heading\ncontent")},
+		"dir3/file6.md":            {Data: []byte("not included in the list of paths")},
 	}
 
-	rootNode, err := BuildTree(memFS, ".")
+	rootNode, err := BuildTree(memFS, []string{
+		"dir1/file1.txt",
+		"dir1/dir2/file2.go",
+		"dir3/dir4/dir5/file3.txt",
+		"dir3/dir4/dir5/file4.txt",
+		"dir3/file5.md",
+	})
 	if err != nil {
 		t.Fatalf("error building tree: %v", err)
 	}
@@ -109,10 +116,11 @@ func TestBuildTree(t *testing.T) {
 
 func TestCollapseSingleChildFolders(t *testing.T) {
 	dirLayout := fstest.MapFS{
-		"root/dirA/dirB/dirC/fileA.txt": {Data: []byte("some data")},
+		"dirA/dirB/dirC/fileA.txt": {Data: []byte("some data")},
+		"dirA/dirB/ignored.txt":    {Data: []byte("this is ignored and should not be included in the final data structure")},
 	}
 
-	rootNode, err := BuildTree(dirLayout, "root")
+	rootNode, err := BuildTree(dirLayout, []string{"dirA/dirB/dirC/fileA.txt"})
 	if err != nil {
 		t.Fatalf("unexpected error building tree: %v", err)
 	}

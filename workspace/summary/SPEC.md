@@ -52,8 +52,6 @@ Node:
   Type: Folder
   Parent: root
 
-# Note that this node collapses two directories into a single node.
-# because dir4 has only a single directory underneath it.
 Node:
   Name: dir4/dir5
   Type: Folder
@@ -80,8 +78,6 @@ token count is calculated from the file contents itself, using the
 dynamically calculated by summing the token count of all its children.
 (make sure the data structure is doubly linked, so up and down
 navigation between nodes can be done quickly)
-# 1 - Using "github.com/tiktoken-go/tokenizer", how many tokens
-#     are included in every file of
 
 ## Additional Requirements
 Inherited from project.
