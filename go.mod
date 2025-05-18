@@ -6,6 +6,7 @@ require (
 	github.com/cbroglie/mustache v1.2.0
 	github.com/google/go-cmp v0.7.0
 	github.com/spf13/cobra v1.6.1
+	github.com/tiktoken-go/tokenizer v0.6.2
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -17,6 +18,7 @@ require (
 	github.com/bombsimon/wsl/v3 v3.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/denis-tingajkin/go-header v0.3.1 // indirect
+	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/fatih/color v1.9.0 // indirect
 	github.com/fsnotify/fsnotify v1.4.7 // indirect
 	github.com/go-critic/go-critic v0.5.0 // indirect
