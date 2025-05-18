@@ -107,6 +107,7 @@ func TestBuildTree(t *testing.T) {
 		cmpopts.SortSlices(func(a, b *Node) bool {
 			return a.Name < b.Name
 		}),
+		cmpopts.IgnoreUnexported(Node{}),
 	}
 
 	if diff := cmp.Diff(wantRoot, rootNode, opts...); diff != "" {

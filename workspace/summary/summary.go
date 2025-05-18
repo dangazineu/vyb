@@ -17,20 +17,36 @@ const (
 	File
 )
 
+// TODO(vyb): instead of a single Node struct, use two struct types, one to represent Folders, and another to represent Files. Make all field unexported, and only expose the relevant information through a shared common interface that is exported and implemented by both.
+
 // Node represents either a file or folder in the hierarchy.
 type Node struct {
-	Name       string
-	Type       NodeType
-	Parent     *Node
-	Children   []*Node
-	tokenCount int // computed lazily for folders if needed
+	Name     string
+	Type     NodeType
+	Parent   *Node
+	Children []*Node
+	filePath string
+	fsys     fs.FS
+	// TODO(vyb): create a struct for tokenCount, so it starts as nil and only gets assigned when its value is computed, so you don't have to have two variables to accommodate the lazy loading logic.
+	tokenCount         int
+	tokenCountComputed bool
 }
 
 // TokenCount returns the number of tokens in this node.
-// For a file, this includes the file's tokens.
+// For a file, this includes the file's tokens, computed on-demand.
 // For a folder, this is the sum of tokens of all descendants.
 func (n *Node) TokenCount() int {
 	if n.Type == File {
+		if !n.tokenCountComputed {
+			content, err := fs.ReadFile(n.fsys, n.filePath)
+			if err == nil {
+				tCount, err := getFileTokenCount(content)
+				if err == nil {
+					n.tokenCount = tCount
+				}
+			}
+			n.tokenCountComputed = true
+		}
 		return n.tokenCount
 	}
 
@@ -70,21 +86,11 @@ func BuildTree(fsys fs.FS, pathEntries []string) (*Node, error) {
 		if info.IsDir() {
 			continue
 		} else {
-			// TODO(vyb): instead of reading the file contents while building the tree, do it lazily when requested for the first time. Cache the result on the tokenCount variable to avoid computing it every time.
-			fileBytes, err := fs.ReadFile(fsys, entry)
-			if err != nil {
-				return nil, err
-			}
-
 			n := &Node{
 				Name:     filepath.Base(entry),
 				Type:     File,
-				Children: nil,
-			}
-
-			n.tokenCount, err = getFileTokenCount(fileBytes)
-			if err != nil {
-				return nil, err
+				filePath: relPath,
+				fsys:     fsys,
 			}
 
 			parentNode := findOrCreateParentNode(rootNode, relPath)
