@@ -8,6 +8,24 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
+// testNode is used to compare the final structure in tests.
+type testNode struct {
+	Name     string
+	Type     NodeType
+	Children []*testNode
+}
+
+func toTestNode(n Node) *testNode {
+	tn := &testNode{
+		Name: n.Name(),
+		Type: n.Type(),
+	}
+	for _, c := range n.Children() {
+		tn.Children = append(tn.Children, toTestNode(c))
+	}
+	return tn
+}
+
 func TestBuildTree(t *testing.T) {
 	memFS := fstest.MapFS{
 		"dir1/file1.txt":           {Data: []byte("test file 1")},
@@ -33,10 +51,10 @@ func TestBuildTree(t *testing.T) {
 	if rootNode == nil {
 		t.Fatal("root node is nil")
 	}
-	if rootNode.Name != "." {
-		t.Errorf("expected root name '.', got '%s'", rootNode.Name)
+	if rootNode.Name() != "." {
+		t.Errorf("expected root name '.' but got '%s'", rootNode.Name())
 	}
-	if rootNode.Type != Folder {
+	if rootNode.Type() != Folder {
 		t.Errorf("expected root node to be Folder")
 	}
 
@@ -45,24 +63,25 @@ func TestBuildTree(t *testing.T) {
 	for range memFS {
 		expectedSum++
 	}
-	if rootNode.TokenCount() < expectedSum {
-		t.Errorf("expected token count >= %d, got %d", expectedSum, rootNode.TokenCount())
+	tcount := rootNode.TokenCount()
+	if tcount < expectedSum {
+		t.Errorf("expected token count >= %d, got %d", expectedSum, tcount)
 	}
 
-	// Use cmp.Diff to validate that the tree matches the expected data structure.
-	// Ignore token counts and use a sorting function to ensure slices are always in the same order.
-	wantRoot := &Node{
+	// Validate structure.
+	gotRoot := toTestNode(rootNode)
+	wantRoot := &testNode{
 		Name: ".",
 		Type: Folder,
-		Children: []*Node{
+		Children: []*testNode{
 			{
 				Name: "dir1",
 				Type: Folder,
-				Children: []*Node{
+				Children: []*testNode{
 					{
 						Name: "dir2",
 						Type: Folder,
-						Children: []*Node{
+						Children: []*testNode{
 							{
 								Name: "file2.go",
 								Type: File,
@@ -78,11 +97,11 @@ func TestBuildTree(t *testing.T) {
 			{
 				Name: "dir3",
 				Type: Folder,
-				Children: []*Node{
+				Children: []*testNode{
 					{
 						Name: "dir4/dir5",
 						Type: Folder,
-						Children: []*Node{
+						Children: []*testNode{
 							{
 								Name: "file3.txt",
 								Type: File,
@@ -103,14 +122,12 @@ func TestBuildTree(t *testing.T) {
 	}
 
 	opts := []cmp.Option{
-		cmpopts.IgnoreFields(Node{}, "Parent", "tokenCount"),
-		cmpopts.SortSlices(func(a, b *Node) bool {
+		cmpopts.SortSlices(func(a, b *testNode) bool {
 			return a.Name < b.Name
 		}),
-		cmpopts.IgnoreUnexported(Node{}),
 	}
 
-	if diff := cmp.Diff(wantRoot, rootNode, opts...); diff != "" {
+	if diff := cmp.Diff(wantRoot, gotRoot, opts...); diff != "" {
 		t.Errorf("tree structure mismatch (-want +got):\n%s", diff)
 	}
 }
@@ -127,11 +144,12 @@ func TestCollapseSingleChildFolders(t *testing.T) {
 	}
 
 	// We expect the single child folders to be collapsed into 'dirA/dirB/dirC'
-	if len(rootNode.Children) != 1 {
-		t.Fatalf("expected 1 child under root, got %d", len(rootNode.Children))
+	gotRoot := toTestNode(rootNode)
+	if len(gotRoot.Children) != 1 {
+		t.Fatalf("expected 1 child under root, got %d", len(gotRoot.Children))
 	}
 
-	folder := rootNode.Children[0]
+	folder := gotRoot.Children[0]
 	if folder.Name != "dirA/dirB/dirC" {
 		t.Errorf("folder name not collapsed properly, got: %s", folder.Name)
 	}

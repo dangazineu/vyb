@@ -17,55 +17,116 @@ const (
 	File
 )
 
-// TODO(vyb): instead of a single Node struct, use two struct types, one to represent Folders, and another to represent Files. Make all field unexported, and only expose the relevant information through a shared common interface that is exported and implemented by both.
-
-// Node represents either a file or folder in the hierarchy.
-type Node struct {
-	Name     string
-	Type     NodeType
-	Parent   *Node
-	Children []*Node
-	filePath string
-	fsys     fs.FS
-	// TODO(vyb): create a struct for tokenCount, so it starts as nil and only gets assigned when its value is computed, so you don't have to have two variables to accommodate the lazy loading logic.
-	tokenCount         int
-	tokenCountComputed bool
+// Node is the public interface for both files and folders.
+type Node interface {
+	Name() string
+	Type() NodeType
+	Parent() Node
+	Children() []Node
+	TokenCount() int
 }
 
-// TokenCount returns the number of tokens in this node.
-// For a file, this includes the file's tokens, computed on-demand.
-// For a folder, this is the sum of tokens of all descendants.
-func (n *Node) TokenCount() int {
-	if n.Type == File {
-		if !n.tokenCountComputed {
-			content, err := fs.ReadFile(n.fsys, n.filePath)
-			if err == nil {
-				tCount, err := getFileTokenCount(content)
-				if err == nil {
-					n.tokenCount = tCount
-				}
-			}
-			n.tokenCountComputed = true
-		}
-		return n.tokenCount
+// folderNode represents a folder.
+type folderNode struct {
+	name       string
+	parent     Node
+	children   []Node
+	fsys       fs.FS
+	tokenCount *int
+}
+
+// fileNode represents a file.
+type fileNode struct {
+	name       string
+	parent     Node
+	filePath   string
+	fsys       fs.FS
+	tokenCount *int
+}
+
+// Verify folderNode and fileNode implement Node.
+var (
+	_ Node = (*folderNode)(nil)
+	_ Node = (*fileNode)(nil)
+)
+
+// Name returns the folder name.
+func (f *folderNode) Name() string {
+	return f.name
+}
+
+// Type returns the NodeType for a folder.
+func (f *folderNode) Type() NodeType {
+	return Folder
+}
+
+// Parent returns the parent node.
+func (f *folderNode) Parent() Node {
+	return f.parent
+}
+
+// Children returns the slice of child nodes.
+func (f *folderNode) Children() []Node {
+	return f.children
+}
+
+// TokenCount returns the aggregated token count of all children.
+func (f *folderNode) TokenCount() int {
+	if f.tokenCount != nil {
+		return *f.tokenCount
 	}
 
 	sum := 0
-	for _, child := range n.Children {
-		sum += child.TokenCount()
+	for _, c := range f.children {
+		sum += c.TokenCount()
 	}
-	n.tokenCount = sum
-	return n.tokenCount
+	f.tokenCount = &sum
+	return sum
+}
+
+// Name returns the file name.
+func (f *fileNode) Name() string {
+	return f.name
+}
+
+// Type returns the NodeType for a file.
+func (f *fileNode) Type() NodeType {
+	return File
+}
+
+// Parent returns the parent node.
+func (f *fileNode) Parent() Node {
+	return f.parent
+}
+
+// Children returns nil for a file.
+func (f *fileNode) Children() []Node {
+	return nil
+}
+
+// TokenCount lazily computes and returns the file's token count.
+func (f *fileNode) TokenCount() int {
+	if f.tokenCount != nil {
+		return *f.tokenCount
+	}
+
+	content, err := fs.ReadFile(f.fsys, f.filePath)
+	count := 0
+	if err == nil {
+		tCount, _ := getFileTokenCount(content)
+		count = tCount
+	}
+	f.tokenCount = &count
+	return count
 }
 
 // BuildTree constructs the hierarchy from a given fs.FS and list of path entries.
 // It returns the Node representing the root folder.
-func BuildTree(fsys fs.FS, pathEntries []string) (*Node, error) {
-	// The root folder always gets a node, regardless of the shape of the filesystem
-	rootNode := &Node{
-		Name:   ".",
-		Type:   Folder,
-		Parent: nil,
+func BuildTree(fsys fs.FS, pathEntries []string) (Node, error) {
+	rootNode := &folderNode{
+		name:   ".",
+		parent: nil,
+		fsys:   fsys,
 	}
 
 	for _, entry := range pathEntries {
@@ -83,70 +144,77 @@ func BuildTree(fsys fs.FS, pathEntries []string) (*Node, error) {
 			return nil, err
 		}
 
+		// Skip directories in the provided path list.
 		if info.IsDir() {
 			continue
-		} else {
-			n := &Node{
-				Name:     filepath.Base(entry),
-				Type:     File,
-				filePath: relPath,
-				fsys:     fsys,
-			}
+		}
 
-			parentNode := findOrCreateParentNode(rootNode, relPath)
-			if parentNode == nil {
-				return nil, fmt.Errorf("failed to find or create parent node for %s", entry)
-			}
-			parentNode.Children = append(parentNode.Children, n)
-			n.Parent = parentNode
+		fileN := &fileNode{
+			name:     filepath.Base(entry),
+			filePath: relPath,
+			fsys:     fsys,
+		}
+
+		parentNode := findOrCreateParentNode(rootNode, relPath)
+		if parentNode == nil {
+			return nil, fmt.Errorf("failed to find or create parent node for %s", entry)
+		}
+
+		// parentNode must be folderNode.
+		if pf, ok := parentNode.(*folderNode); ok {
+			pf.children = append(pf.children, fileN)
+			fileN.parent = pf
+		} else {
+			return nil, fmt.Errorf("parent node is not a folder for %s", entry)
 		}
 	}
 
-	// Collapse single-child folders.
 	collapseFolders(rootNode)
 
 	return rootNode, nil
 }
 
 // findOrCreateParentNode navigates from the root node down the path minus the last component.
-// For example, if the path is "dir1/dir2/file.txt", the parent node is the node for "dir1/dir2".
-func findOrCreateParentNode(rootNode *Node, relPath string) *Node {
+func findOrCreateParentNode(root Node, relPath string) Node {
 	parts := strings.Split(relPath, string(filepath.Separator))
 	if len(parts) < 1 {
-		return rootNode
+		return root
 	}
 
 	parentParts := parts[:len(parts)-1]
 	if len(parentParts) == 0 {
-		return rootNode
+		return root
 	}
 
-	return navigateOrCreate(rootNode, parentParts)
+	return navigateOrCreate(root, parentParts)
 }
 
 // navigateOrCreate navigates down the tree from the given node, creating new Folder nodes as needed.
-func navigateOrCreate(node *Node, parts []string) *Node {
+func navigateOrCreate(n Node, parts []string) Node {
 	if len(parts) == 0 {
-		return node
+		return n
+	}
+
+	fn, ok := n.(*folderNode)
+	if !ok {
+		// The given node is a file, cannot navigate into it.
+		return nil
 	}
 
 	chunk := parts[0]
-	var child *Node
-	for _, c := range node.Children {
-		if c.Name == chunk && c.Type == Folder {
-			child = c
-			break
+	for _, c := range fn.children {
+		if c.Name() == chunk && c.Type() == Folder {
+			return navigateOrCreate(c, parts[1:])
 		}
 	}
-	if child == nil {
-		child = &Node{
-			Name:   chunk,
-			Type:   Folder,
-			Parent: node,
-		}
-		node.Children = append(node.Children, child)
+
+	sub := &folderNode{
+		name:   chunk,
+		parent: fn,
+		fsys:   fn.fsys,
 	}
-	return navigateOrCreate(child, parts[1:])
+	fn.children = append(fn.children, sub)
+	return navigateOrCreate(sub, parts[1:])
 }
 
 // getFileTokenCount uses the tiktoken-go library to determine the token count.
@@ -160,32 +228,35 @@ func getFileTokenCount(content []byte) (int, error) {
 }
 
 // collapseFolders performs in-place collapsing of folders that contain exactly one subfolder and no files.
-func collapseFolders(n *Node) {
-	if n.Type == File {
+func collapseFolders(n Node) {
+	if n.Type() == File {
 		return
 	}
+	folder := n.(*folderNode)
 
-	for _, c := range n.Children {
+	for _, c := range folder.children {
 		collapseFolders(c)
 	}
 
 	// Don't collapse the root node.
-	if n.Parent == nil {
+	if folder.parent == nil {
 		return
 	}
 
-	// If we have exactly one child, that child is a folder, and we have no other files,
+	// If we have exactly one child, it's a folder, and we have no other children,
 	// we combine them.
 	for {
-		if len(n.Children) == 1 && n.Children[0].Type == Folder {
-			sub := n.Children[0]
-			// Combine sub's name with n's.
-			n.Name = filepath.Join(n.Name, sub.Name)
-
-			// Move sub's children to n.
-			n.Children = sub.Children
-			for _, gc := range n.Children {
-				gc.Parent = n
+		if len(folder.children) == 1 && folder.children[0].Type() == Folder {
+			sub := folder.children[0].(*folderNode)
+			folder.name = filepath.Join(folder.name, sub.name)
+			folder.children = sub.children
+			for _, gc := range folder.children {
+				switch node := gc.(type) {
+				case *folderNode:
+					node.parent = folder
+				case *fileNode:
+					node.parent = folder
+				}
 			}
 		} else {
 			break
