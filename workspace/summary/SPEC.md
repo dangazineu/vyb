@@ -1,9 +1,16 @@
-This module is part of a Golang CLI, and it provides the logic for summarizing folders in an application's, based on their content. 
+This module is part of a Golang CLI, and it provides the logic for
+summarizing folders in an application source directory, based on
+their content.
 
 Given a list of files contained in a root fs.FS, the code will:
 
 ## Data Structure
-Create a custom tree structure representing folders and files in the hierarchy. The folder nodes are either folders with files directly underneath them, or the folders that combine two or more folder nodes. The string name of each file and folder node is the relative path between the nodes.
+
+Create a custom tree structure representing folders and files in the
+hierarchy. The folder nodes are either folders with files directly
+underneath them, or folders that contain other folder nodes. The
+string name of each file and folder node is the relative path between
+the nodes.
 
 For example, given the following set of files:
 
@@ -45,6 +52,8 @@ Node:
   Type: Folder
   Parent: root
 
+# Note that this node collapses two directories into a single node.
+# because dir4 has only a single directory underneath it.
 Node:
   Name: dir4/dir5
   Type: Folder
@@ -65,4 +74,23 @@ Node:
   Type: File
   Parent: dir3
 
-# 1 - using "github.com/tiktoken-go/tokenizer", how many tokens are included in every file of 
+Each node should have a token count. For file nodes, the value of
+token count is calculated from the file contents itself, using the
+`tiktoken-go` library. For folder nodes, the value of token count is
+dynamically calculated by summing the token count of all its children.
+(make sure the data structure is doubly linked, so up and down
+navigation between nodes can be done quickly)
+# 1 - Using "github.com/tiktoken-go/tokenizer", how many tokens
+#     are included in every file of
+
+## Additional Requirements
+Inherited from project.
+
+### Testing and Quality Assurance
+- Use Go's built-in testing framework for unit and integration tests.
+- Make sure every code change is accompanied by tests.
+
+### Documentation and Maintenance
+- Code comments and a README file can be used for documentation.
+- Make sure every code change includes documentation updates as
+  appropriate.
