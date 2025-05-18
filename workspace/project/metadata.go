@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -14,6 +15,24 @@ import (
 type Metadata struct {
 	// Root determines the relative position of a given Metadata file's .vyb directory and the project root
 	Root string `yaml:"root"`
+
+	Modules *Module `yaml:"modules"`
+}
+
+// Module represents a hierarchical grouping of information within a vyb project structure. For now, this translates to
+// directories under the metadata's parent directory, but this could be changed to represent sets of files or any other
+// logical grouping.
+type Module struct {
+	Name    string    `yaml:"name"`
+	Modules []*Module `yaml:"modules"`
+	Files   []*File   `yaml:"files"`
+}
+
+type File struct {
+	Name         string    `yaml:"name"`
+	LastModified time.Time `yaml:"last_modified"`
+	TokenCount   int64     `yaml:"token_count"`
+	MD5          string    `yaml:"md5"`
 }
 
 // ConfigFoundError is returned when a project configuration is already found.
