@@ -3,6 +3,9 @@ package summary
 import (
 	"testing"
 	"testing/fstest"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestBuildTree(t *testing.T) {
@@ -32,17 +35,79 @@ func TestBuildTree(t *testing.T) {
 
 	// Quick check token sums.
 	expectedSum := 0
-	for _, _ = range memFS {
-		// tokens are not necessarily known exactly, but let's just ensure it's > 0.
-		expectedSum += 1
+	for range memFS {
+		expectedSum++
 	}
 	if rootNode.TokenCount() < expectedSum {
 		t.Errorf("expected token count >= %d, got %d", expectedSum, rootNode.TokenCount())
 	}
+
+	// Use cmp.Diff to validate that the tree matches the expected data structure.
+	// Ignore token counts and use a sorting function to ensure slices are always in the same order.
+	wantRoot := &Node{
+		Name: ".",
+		Type: Folder,
+		Children: []*Node{
+			{
+				Name: "dir1",
+				Type: Folder,
+				Children: []*Node{
+					{
+						Name: "dir2",
+						Type: Folder,
+						Children: []*Node{
+							{
+								Name: "file2.go",
+								Type: File,
+							},
+						},
+					},
+					{
+						Name: "file1.txt",
+						Type: File,
+					},
+				},
+			},
+			{
+				Name: "dir3",
+				Type: Folder,
+				Children: []*Node{
+					{
+						Name: "dir4/dir5",
+						Type: Folder,
+						Children: []*Node{
+							{
+								Name: "file3.txt",
+								Type: File,
+							},
+							{
+								Name: "file4.txt",
+								Type: File,
+							},
+						},
+					},
+					{
+						Name: "file5.md",
+						Type: File,
+					},
+				},
+			},
+		},
+	}
+
+	opts := []cmp.Option{
+		cmpopts.IgnoreFields(Node{}, "Parent", "tokenCount"),
+		cmpopts.SortSlices(func(a, b *Node) bool {
+			return a.Name < b.Name
+		}),
+	}
+
+	if diff := cmp.Diff(wantRoot, rootNode, opts...); diff != "" {
+		t.Errorf("tree structure mismatch (-want +got):\n%s", diff)
+	}
 }
 
 func TestCollapseSingleChildFolders(t *testing.T) {
-	// We'll create a structure with multiple nested single-child folders.
 	dirLayout := fstest.MapFS{
 		"root/dirA/dirB/dirC/fileA.txt": {Data: []byte("some data")},
 	}
