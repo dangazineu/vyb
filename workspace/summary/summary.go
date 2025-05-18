@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"strings"
 
 	"github.com/tiktoken-go/tokenizer"
 )
@@ -120,7 +121,7 @@ func BuildTree(fsys fs.FS, rootPath string) (*Node, error) {
 func findOrCreateParentNode(rootNode *Node, relPath string) *Node {
 	// The parent path in the hierarchy is everything except the last segment.
 	// If there's only one segment, the parent is the root.
-	parts := filepath.SplitList(relPath)
+	parts := strings.Split(relPath, string(filepath.Separator))
 	if len(parts) < 1 {
 		return rootNode
 	}
@@ -180,13 +181,17 @@ func collapseFolders(n *Node) {
 		collapseFolders(c)
 	}
 
+	// Don't collapse the root node.
+	if n.Parent == nil {
+		return
+	}
+
 	// If we have exactly one child, that child is a folder, and we have no other files,
 	// we combine them.
 	for {
 		if len(n.Children) == 1 && n.Children[0].Type == Folder {
 			sub := n.Children[0]
-			// If sub is the only child, no files at this level.
-			// Combine sub's name with n's name, or rather just extend n's name.
+			// Combine sub's name with n's.
 			n.Name = filepath.Join(n.Name, sub.Name)
 
 			// Move sub's children to n.
