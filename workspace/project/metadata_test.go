@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 func Test_selectForRemoval(t *testing.T) {
@@ -94,7 +95,7 @@ func Test_loadStoredMetadata(t *testing.T) {
 			t.Fatalf("loadStoredMetadata returned an error: %v", err)
 		}
 		if meta.Root != "." {
-			t.Errorf("expected root '.', got '%s'", meta.Root)
+			t.Errorf("expected root '.' , got '%s'", meta.Root)
 		}
 	})
 
@@ -109,9 +110,9 @@ func Test_loadStoredMetadata(t *testing.T) {
 
 func Test_buildMetadata(t *testing.T) {
 	memFS := fstest.MapFS{
-		"folderA/file1.txt":        {Data: []byte("this is file1")},
-		"folderA/folderB/file2.md": {Data: []byte("this is file2")},
-		"folderC/foo.go":           {Data: []byte("package main\nfunc main(){}")},
+		"folderA/file1.txt":        {Data: []byte("this is file1"), ModTime: time.Now()},
+		"folderA/folderB/file2.md": {Data: []byte("this is file2"), ModTime: time.Now()},
+		"folderC/foo.go":           {Data: []byte("package main\nfunc main(){}"), ModTime: time.Now()},
 		".git/ignored":             {Data: []byte("should be excluded")},
 		"go.sum":                   {Data: []byte("should be excluded")},
 	}
@@ -125,85 +126,78 @@ func Test_buildMetadata(t *testing.T) {
 		t.Fatal("buildMetadata returned nil metadata")
 	}
 
-	if meta.Root != "." {
-		t.Errorf("expected root to be '.' but got %q", meta.Root)
+	want := &Metadata{
+		Root: ".",
+		Modules: &Module{
+			Name: ".",
+			Modules: []*Module{
+				{
+					Name: "folderA",
+					Modules: []*Module{
+						{
+							Name: "folderB",
+							Files: []*File{
+								{
+									Name: "file2.md",
+								},
+							},
+						},
+					},
+					Files: []*File{
+						{
+							Name: "file1.txt",
+						},
+					},
+				},
+				{
+					Name: "folderC",
+					Files: []*File{
+						{
+							Name: "foo.go",
+						},
+					},
+				},
+			},
+		},
 	}
 
-	// We expect a top-level module named '.'
-	if meta.Modules.Name != "." {
-		t.Errorf("expected top-level module name '.' but got %q", meta.Modules.Name)
+	// Use cmp with custom sorting for modules and files.
+	opts := []cmp.Option{
+		// We ignore them in structural comparison but will check them below.
+		cmpopts.IgnoreFields(File{}, "LastModified", "MD5", "TokenCount"),
+		cmpopts.EquateEmpty(),
+		cmpopts.SortSlices(func(a, b *Module) bool {
+			return a.Name < b.Name
+		}),
+		cmpopts.SortSlices(func(a, b *File) bool {
+			return a.Name < b.Name
+		}),
 	}
 
-	// TODO(vyb): replace all the logic from here to the end of this test function, by using cmp.Diff (see examples in other test functions in the project).
-	// We'll define a helper to find a submodule by name
-	findModule := func(mods []*Module, name string) *Module {
-		for _, m := range mods {
-			if m.Name == name {
-				return m
-			}
-		}
-		return nil
+	if diff := cmp.Diff(want, meta, opts...); diff != "" {
+		t.Errorf("metadata structure mismatch (-want +got):\n%s", diff)
 	}
 
-	// We expect 2 submodules: folderA, folderC
-	if len(meta.Modules.Modules) != 2 {
-		t.Fatalf("expected 2 submodules, got %d", len(meta.Modules.Modules))
-	}
+	checkNonEmptyFields(t, meta.Modules)
+}
 
-	folderA := findModule(meta.Modules.Modules, "folderA")
-	folderC := findModule(meta.Modules.Modules, "folderC")
-
-	if folderA == nil {
-		t.Error("missing folderA submodule")
+// checkNonEmptyFields validates that LastModified, MD5, and TokenCount are not empty on all files.
+func checkNonEmptyFields(t *testing.T, mod *Module) {
+	if mod == nil {
+		return
 	}
-	if folderC == nil {
-		t.Error("missing folderC submodule")
-	}
-
-	// Check folderA
-	if folderA != nil {
-		if folderA.Name != "folderA" {
-			t.Errorf("expected folderA name, got %q", folderA.Name)
+	for _, f := range mod.Files {
+		if f.MD5 == "" {
+			t.Errorf("File %s has empty MD5", f.Name)
 		}
-		if len(folderA.Files) != 1 {
-			t.Errorf("expected 1 file in folderA, got %d", len(folderA.Files))
-		} else {
-			if folderA.Files[0].Name != "file1.txt" {
-				t.Errorf("expected file1.txt in folderA, got %q", folderA.Files[0].Name)
-			}
+		if f.LastModified.IsZero() {
+			t.Errorf("File %s has zero LastModified", f.Name)
 		}
-		if len(folderA.Modules) != 1 {
-			t.Errorf("expected 1 child module in folderA, got %d", len(folderA.Modules))
-		} else {
-			folderB := folderA.Modules[0]
-			if folderB.Name != "folderB" {
-				t.Errorf("expected folderB name, got %q", folderB.Name)
-			}
-
-			if len(folderB.Files) != 1 {
-				t.Errorf("expected 1 file in folderB, got %d", len(folderB.Files))
-			} else {
-				if folderB.Files[0].Name != "file2.md" {
-					t.Errorf("expected file2.md in folderB, got %q", folderB.Files[0].Name)
-				}
-			}
+		if f.TokenCount < 0 {
+			t.Errorf("File %s has negative TokenCount %d", f.Name, f.TokenCount)
 		}
 	}
-
-	// Check folderC
-	if folderC != nil {
-		if folderC.Name != "folderC" {
-			t.Errorf("expected folderC name, got %q", folderC.Name)
-		}
-		if len(folderC.Files) != 1 {
-			t.Errorf("expected 1 file in folderC, got %d", len(folderC.Files))
-		} else {
-			if folderC.Files[0].Name != "foo.go" {
-				t.Errorf("expected foo.go in folderC, got %q", folderC.Files[0].Name)
-			}
-		}
-		if len(folderC.Modules) != 0 {
-			t.Errorf("expected no child modules in folderC, got %d", len(folderC.Modules))
-		}
+	for _, child := range mod.Modules {
+		checkNonEmptyFields(t, child)
 	}
 }
