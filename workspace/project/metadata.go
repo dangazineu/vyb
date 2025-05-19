@@ -96,7 +96,6 @@ func Create(projectRoot string) error {
 }
 
 // buildMetadata builds a metadata representation for the files available in the given filesystem
-// TODO(vyb) write tests for this function
 func buildMetadata(fsys fs.FS) (*Metadata, error) {
 	selected, err := selector.Select(fsys, ".", nil, systemExclusionPatterns, []string{"*"})
 	if err != nil {
