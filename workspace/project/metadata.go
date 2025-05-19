@@ -1,7 +1,10 @@
 package project
 
 import (
+	"bufio"
+	"crypto/md5"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -9,6 +12,9 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/dangazineu/vyb/workspace/project/internal/summary"
+	"github.com/dangazineu/vyb/workspace/selector"
 )
 
 // Metadata represents project-specific metadata.
@@ -44,6 +50,15 @@ func (e ConfigFoundError) Error() string {
 	return "project configuration already exists; remove the existing .vyb folder or update the configuration if necessary"
 }
 
+// TODO this is duplicated here and in the template.go file. Need to refactor the code to move this logic to a central location.
+var systemExclusionPatterns = []string{
+	".git/",
+	".gitignore",
+	".vyb/",
+	"LICENSE",
+	"go.sum",
+}
+
 // Create creates the project metadata configuration at the project root.
 // Returns an error if the metadata cannot be created, or if it already exists.
 // If a ".vyb" folder exists in the root directory or any of its subdirectories,
@@ -65,13 +80,130 @@ func Create(projectRoot string) error {
 		return fmt.Errorf("failed to create .vyb directory: %w", err)
 	}
 
-	// Write a minimal metadata.yaml file.
-	metaContent := "root: .\n"
+	selected, err := selector.Select(os.DirFS(projectRoot), ".", nil, systemExclusionPatterns, []string{"*"})
+	if err != nil {
+		return fmt.Errorf("failed during file selection: %w", err)
+	}
+
+	rootNode, err := summary.BuildTree(os.DirFS(projectRoot), selected)
+	if err != nil {
+		return fmt.Errorf("failed to build summary tree: %w", err)
+	}
+
+	rootModule, err := nodeToModule(rootNode, os.DirFS(projectRoot))
+	if err != nil {
+		return fmt.Errorf("failed to convert summary tree to modules: %w", err)
+	}
+
+	metadata := &Metadata{
+		Root:    ".",
+		Modules: rootModule,
+	}
+
+	data, err := yaml.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata.yaml: %w", err)
+	}
+
 	metaFilePath := filepath.Join(configDir, "metadata.yaml")
-	if err := os.WriteFile(metaFilePath, []byte(metaContent), 0644); err != nil {
+	if err := os.WriteFile(metaFilePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write metadata.yaml: %w", err)
 	}
+
 	return nil
+}
+
+// nodeToModule converts a summary.Node (folder) into a corresponding Module structure.
+func nodeToModule(n summary.Node, fsys fs.FS) (*Module, error) {
+	if n.Type() == summary.File {
+		return nil, fmt.Errorf("cannot convert file node to module directly: %s", n.Name())
+	}
+	m := &Module{
+		Name:    n.Name(),
+		Modules: []*Module{},
+		Files:   []*File{},
+	}
+
+	for _, child := range n.Children() {
+		if child.Type() == summary.Folder {
+			childMod, err := nodeToModule(child, fsys)
+			if err != nil {
+				return nil, err
+			}
+			m.Modules = append(m.Modules, childMod)
+		} else {
+			f, err := nodeToFile(child, fsys)
+			if err != nil {
+				return nil, err
+			}
+			m.Files = append(m.Files, f)
+		}
+	}
+	return m, nil
+}
+
+// nodeToFile converts a summary.Node (file) into a File struct, computing last modified time, token count, and MD5.
+func nodeToFile(n summary.Node, fsys fs.FS) (*File, error) {
+	if n.Type() == summary.Folder {
+		return nil, fmt.Errorf("nodeToFile called on a folder node: %s", n.Name())
+	}
+	fullPath := getFullPath(n)
+	info, err := fs.Stat(fsys, fullPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat file %s: %w", fullPath, err)
+	}
+
+	h, err := computeMd5(fsys, fullPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute MD5 for %s: %w", fullPath, err)
+	}
+
+	return &File{
+		Name:         n.Name(),
+		LastModified: info.ModTime(),
+		TokenCount:   int64(n.TokenCount()),
+		MD5:          h,
+	}, nil
+}
+
+// getFullPath reconstructs the relative path for a given summary.Node by climbing up to the root.
+func getFullPath(n summary.Node) string {
+	var segments []string
+	curr := n
+
+	for curr != nil {
+		if curr.Parent() == nil {
+			// This is the root node
+			if curr.Name() != "." {
+				segments = append([]string{curr.Name()}, segments...)
+			}
+			break
+		}
+		name := curr.Name()
+		if name != "." && name != "" {
+			// Note that a folder node can have slashes in its name if it was collapsed.
+			// We treat that entire name as one segment.
+			segments = append([]string{name}, segments...)
+		}
+		curr = curr.Parent()
+	}
+
+	return filepath.Join(segments...)
+}
+
+func computeMd5(fsys fs.FS, path string) (string, error) {
+	f, err := fsys.Open(path)
+	if err != nil {
+		return "", err
+	}
+
+	defer f.Close()
+	hasher := md5.New()
+	_, err = io.Copy(hasher, bufio.NewReader(f))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
 }
 
 // WrongRootError is returned by Remove when the current directory is not a valid project root.
