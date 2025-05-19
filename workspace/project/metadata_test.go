@@ -89,9 +89,9 @@ func TestLoadFromFS(t *testing.T) {
 			},
 		}
 
-		meta, err := Load(memFS)
+		meta, err := loadStoredMetadata(memFS)
 		if err != nil {
-			t.Fatalf("Load returned an error: %v", err)
+			t.Fatalf("loadStoredMetadata returned an error: %v", err)
 		}
 		if meta.Root != "." {
 			t.Errorf("expected root '.', got '%s'", meta.Root)
@@ -100,7 +100,7 @@ func TestLoadFromFS(t *testing.T) {
 
 	t.Run("File not found", func(t *testing.T) {
 		memFS := fstest.MapFS{}
-		_, err := Load(memFS)
+		_, err := loadStoredMetadata(memFS)
 		if err == nil {
 			t.Fatal("expected error for missing metadata.yaml, got nil")
 		}

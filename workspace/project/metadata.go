@@ -42,12 +42,12 @@ type File struct {
 }
 
 // ConfigFoundError is returned when a project configuration is already found.
-// The error indicates that a project configuration already exists. Remove or update the existing
+// The error indicates that a project configuration already exists. Remove or buildMetadata the existing
 // configuration if necessary.
 type ConfigFoundError struct{}
 
 func (e ConfigFoundError) Error() string {
-	return "project configuration already exists; remove the existing .vyb folder or update the configuration if necessary"
+	return "project configuration already exists; remove the existing .vyb folder or buildMetadata the configuration if necessary"
 }
 
 // TODO this is duplicated here and in the template.go file. Need to refactor the code to move this logic to a central location.
@@ -80,25 +80,7 @@ func Create(projectRoot string) error {
 		return fmt.Errorf("failed to create .vyb directory: %w", err)
 	}
 
-	selected, err := selector.Select(os.DirFS(projectRoot), ".", nil, systemExclusionPatterns, []string{"*"})
-	if err != nil {
-		return fmt.Errorf("failed during file selection: %w", err)
-	}
-
-	rootNode, err := summary.BuildTree(os.DirFS(projectRoot), selected)
-	if err != nil {
-		return fmt.Errorf("failed to build summary tree: %w", err)
-	}
-
-	rootModule, err := nodeToModule(rootNode, os.DirFS(projectRoot))
-	if err != nil {
-		return fmt.Errorf("failed to convert summary tree to modules: %w", err)
-	}
-
-	metadata := &Metadata{
-		Root:    ".",
-		Modules: rootModule,
-	}
+	metadata, err := buildMetadata(os.DirFS(projectRoot))
 
 	data, err := yaml.Marshal(metadata)
 	if err != nil {
@@ -113,10 +95,36 @@ func Create(projectRoot string) error {
 	return nil
 }
 
-// Load reads the .vyb/metadata.yaml in the given fs.FS.
+// buildMetadata builds a metadata representation for the files available in the given filesystem
+// TODO(vyb) write tests for this function
+func buildMetadata(fsys fs.FS) (*Metadata, error) {
+	selected, err := selector.Select(fsys, ".", nil, systemExclusionPatterns, []string{"*"})
+	if err != nil {
+		return nil, fmt.Errorf("failed during file selection: %w", err)
+	}
+
+	rootNode, err := summary.BuildTree(fsys, selected)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build summary tree: %w", err)
+	}
+
+	rootModule, err := nodeToModule(rootNode, fsys)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert summary tree to modules: %w", err)
+	}
+
+	metadata := &Metadata{
+		Root:    ".",
+		Modules: rootModule,
+	}
+
+	return metadata, nil
+}
+
+// loadStoredMetadata reads the .vyb/metadata.yaml in the given fs.FS.
 // It parses its contents into a Metadata struct. If the file is
 // not found or if parsing fails, it returns an error.
-func Load(fsys fs.FS) (*Metadata, error) {
+func loadStoredMetadata(fsys fs.FS) (*Metadata, error) {
 	data, err := fs.ReadFile(fsys, ".vyb/metadata.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read metadata file .vyb/metadata.yaml: %w", err)
