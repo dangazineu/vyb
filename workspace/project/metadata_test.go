@@ -115,14 +115,14 @@ func Test_buildMetadata(t *testing.T) {
 					Modules: []*Module{
 						{
 							Name: "folderB",
-							Files: []*File{
+							Files: []*FileRef{
 								{
 									Name: "file2.md",
 								},
 							},
 						},
 					},
-					Files: []*File{
+					Files: []*FileRef{
 						{
 							Name: "file1.txt",
 						},
@@ -130,7 +130,7 @@ func Test_buildMetadata(t *testing.T) {
 				},
 				{
 					Name: "folderC",
-					Files: []*File{
+					Files: []*FileRef{
 						{
 							Name: "foo.go",
 						},
@@ -143,12 +143,12 @@ func Test_buildMetadata(t *testing.T) {
 	// Use cmp with custom sorting for modules and files.
 	opts := []cmp.Option{
 		// We ignore them in structural comparison but will check them below.
-		cmpopts.IgnoreFields(File{}, "LastModified", "MD5", "TokenCount"),
+		cmpopts.IgnoreFields(FileRef{}, "LastModified", "MD5", "TokenCount"),
 		cmpopts.EquateEmpty(),
 		cmpopts.SortSlices(func(a, b *Module) bool {
 			return a.Name < b.Name
 		}),
-		cmpopts.SortSlices(func(a, b *File) bool {
+		cmpopts.SortSlices(func(a, b *FileRef) bool {
 			return a.Name < b.Name
 		}),
 	}

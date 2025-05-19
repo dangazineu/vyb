@@ -18,7 +18,7 @@ func BuildTree(fsys fs.FS, pathEntries []string) (*Module, error) {
 	rootModule := &Module{
 		Name:    ".",
 		Modules: []*Module{},
-		Files:   []*File{},
+		Files:   []*FileRef{},
 	}
 
 	for _, entry := range pathEntries {
@@ -55,8 +55,8 @@ func BuildTree(fsys fs.FS, pathEntries []string) (*Module, error) {
 	return rootModule, nil
 }
 
-// buildFile creates a *project.File with computed last-modified time, token count, and MD5.
-func buildFile(fsys fs.FS, path string) (*File, error) {
+// buildFile creates a *project.FileRef with computed last-modified time, token count, and MD5.
+func buildFile(fsys fs.FS, path string) (*FileRef, error) {
 	info, err := fs.Stat(fsys, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat file %s: %w", path, err)
@@ -74,7 +74,7 @@ func buildFile(fsys fs.FS, path string) (*File, error) {
 		return nil, fmt.Errorf("failed to compute MD5 for %s: %w", path, err)
 	}
 
-	return &File{
+	return &FileRef{
 		Name:         filepath.Base(path),
 		LastModified: info.ModTime(),
 		TokenCount:   int64(tCount),
@@ -115,7 +115,7 @@ func navigateOrCreateModule(m *Module, parts []string) *Module {
 	newSub := &Module{
 		Name:    chunk,
 		Modules: []*Module{},
-		Files:   []*File{},
+		Files:   []*FileRef{},
 	}
 	m.Modules = append(m.Modules, newSub)
 	return navigateOrCreateModule(newSub, parts[1:])

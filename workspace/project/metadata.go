@@ -23,25 +23,21 @@ type Metadata struct {
 // Module represents a hierarchical grouping of information within a vyb
 // project structure.
 type Module struct {
-	Name    string    `yaml:"name"`
-	Modules []*Module `yaml:"modules"`
-	Files   []*File   `yaml:"files"`
+	Name    string     `yaml:"name"`
+	Modules []*Module  `yaml:"modules"`
+	Files   []*FileRef `yaml:"files"`
+
+	//Context is an LLM-provided textual description of the context in which a given Module exists.
+	Context string `yaml:"context"`
+	//Summary is an LLM-provided textual description of the content that lives within a given Module.
+	Summary string `yaml:"summary"`
 }
 
-type File struct {
+type FileRef struct {
 	Name         string    `yaml:"name"`
 	LastModified time.Time `yaml:"last_modified"`
 	TokenCount   int64     `yaml:"token_count"`
 	MD5          string    `yaml:"md5"`
-}
-
-// ConfigFoundError is returned when a project configuration is already found.
-// The error indicates that a project configuration already exists. Remove or
-// buildMetadata the existing configuration if necessary.
-type ConfigFoundError struct{}
-
-func (e ConfigFoundError) Error() string {
-	return "project configuration already exists; remove the existing .vyb folder or buildMetadata the configuration if necessary"
 }
 
 var systemExclusionPatterns = []string{
@@ -63,7 +59,7 @@ func Create(projectRoot string) error {
 		return err
 	}
 	if len(existingFolders) > 0 {
-		return ConfigFoundError{}
+		return fmt.Errorf("failed to create a project configuration because there is already a configuration within the given root: %s", existingFolders[0])
 	}
 
 	configDir := filepath.Join(projectRoot, ".vyb")
