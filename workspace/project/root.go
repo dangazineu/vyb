@@ -2,7 +2,6 @@ package project
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,9 +20,9 @@ func isAllowedRelativePath(rel string) bool {
 // FindRoot inspects the .vyb/metadata.yaml file under the given path and returns an fs.FS
 // that points to the project root as configured in the metadata. It returns an error if no
 // configuration is found or if the metadata's root field indicates a different project root.
-func FindRoot(projectRoot string) (fs.FS, error) {
-	return findRoot(projectRoot, true)
-}
+//func FindRoot(projectRoot string) (fs.FS, error) {
+//	return findRoot(projectRoot, true)
+//}
 
 // FindDistanceToRoot returns the relative distance between the given path and the project root,
 // as long as the project root is either the given path or one of its parents.
@@ -37,7 +36,7 @@ func FindDistanceToRoot(path string) (string, error) {
 	}
 
 	// Ascend from absPath to find the project root.
-	// The project root is identified by a .vyb/metadata.yaml file with Metadata.Root equal to "."
+	// The project root is identified by a .vyb/metadata.yaml
 	curr := absPath
 	var projectRoot string
 	found := false
@@ -46,11 +45,13 @@ func FindDistanceToRoot(path string) (string, error) {
 		data, err := os.ReadFile(metaPath)
 		if err == nil {
 			var m Metadata
-			if err := yaml.Unmarshal(data, &m); err == nil && m.Root == "." {
-				projectRoot = curr
-				found = true
-				break
+			err := yaml.Unmarshal(data, &m)
+			if err != nil {
+				return "", fmt.Errorf("project root has invalid metadata: %w", err)
 			}
+			projectRoot = curr
+			found = true
+			break
 		}
 		parent := filepath.Dir(curr)
 		if parent == curr {
@@ -93,36 +94,36 @@ func FindDistanceToRoot(path string) (string, error) {
 //     (i.e.: only "../", "../../", "../../../", etc). Otherwise, it returns a WrongRootError.
 //   - If no .vyb/metadata.yaml is found, or if follow is false and the Metadata.Root is not ".",
 //     it returns an error.
-func findRoot(projectRoot string, follow bool) (fs.FS, error) {
-	metaPath := filepath.Join(projectRoot, ".vyb", "metadata.yaml")
-	data, err := os.ReadFile(metaPath)
-	if err == nil {
-		var m Metadata
-		if err := yaml.Unmarshal(data, &m); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal metadata.yaml: %w", err)
-		}
-		if m.Root == "." {
-			return os.DirFS(projectRoot), nil
-		} else {
-			if follow {
-				if !isAllowedRelativePath(m.Root) {
-					return nil, newWrongRootErr(m.Root)
-				}
-				newRoot := filepath.Join(projectRoot, m.Root)
-				newRoot = filepath.Clean(newRoot)
-				return findRoot(newRoot, false)
-			}
-			return nil, newWrongRootErr(m.Root)
-		}
-	}
-
-	// If metadata.yaml not found and follow is true, move to parent directory.
-	if follow {
-		parent := filepath.Dir(projectRoot)
-		if parent == projectRoot {
-			return nil, fmt.Errorf("no .vyb/metadata.yaml found, reached filesystem root")
-		}
-		return findRoot(parent, true)
-	}
-	return nil, fmt.Errorf("no .vyb/metadata.yaml found in %s", projectRoot)
-}
+//func findRoot(projectRoot string, follow bool) (fs.FS, error) {
+//	metaPath := filepath.Join(projectRoot, ".vyb", "metadata.yaml")
+//	data, err := os.ReadFile(metaPath)
+//	if err == nil {
+//		var m Metadata
+//		if err := yaml.Unmarshal(data, &m); err != nil {
+//			return nil, fmt.Errorf("failed to unmarshal metadata.yaml: %w", err)
+//		}
+//		if m.Root == "." {
+//			return os.DirFS(projectRoot), nil
+//		} else {
+//			if follow {
+//				if !isAllowedRelativePath(m.Root) {
+//					return nil, newWrongRootErr(m.Root)
+//				}
+//				newRoot := filepath.Join(projectRoot, m.Root)
+//				newRoot = filepath.Clean(newRoot)
+//				return findRoot(newRoot, false)
+//			}
+//			return nil, newWrongRootErr(m.Root)
+//		}
+//	}
+//
+//	// If metadata.yaml not found and follow is true, move to parent directory.
+//	if follow {
+//		parent := filepath.Dir(projectRoot)
+//		if parent == projectRoot {
+//			return nil, fmt.Errorf("no .vyb/metadata.yaml found, reached filesystem root")
+//		}
+//		return findRoot(parent, true)
+//	}
+//	return nil, fmt.Errorf("no .vyb/metadata.yaml found in %s", projectRoot)
+//}

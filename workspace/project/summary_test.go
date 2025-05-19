@@ -1,4 +1,4 @@
-package summary
+package project
 
 import (
 	"testing"
@@ -8,6 +8,14 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
+// We'll reuse the NodeType constants for convenience in the tests
+type NodeType int
+
+const (
+	Folder NodeType = iota
+	F1le
+)
+
 // testNode is used to compare the final structure in tests.
 type testNode struct {
 	Name     string
@@ -15,15 +23,35 @@ type testNode struct {
 	Children []*testNode
 }
 
-func toTestNode(n Node) *testNode {
+func toTestNode(m *Module) *testNode {
 	tn := &testNode{
-		Name: n.Name(),
-		Type: n.Type(),
+		Name: m.Name,
+		Type: Folder,
 	}
-	for _, c := range n.Children() {
-		tn.Children = append(tn.Children, toTestNode(c))
+	// For each submodule, treat them as children with Folder type
+	for _, sm := range m.Modules {
+		tn.Children = append(tn.Children, toTestNode(sm))
+	}
+	// For each file, treat it as a child with F1le type
+	for _, f := range m.Files {
+		tn.Children = append(tn.Children, &testNode{
+			Name: f.Name,
+			Type: F1le,
+		})
 	}
 	return tn
+}
+
+// totalTokenCount sums up the token counts of all files (recursively)
+func totalTokenCount(m *Module) int {
+	sum := 0
+	for _, f := range m.Files {
+		sum += int(f.TokenCount)
+	}
+	for _, sm := range m.Modules {
+		sum += totalTokenCount(sm)
+	}
+	return sum
 }
 
 func TestBuildTree(t *testing.T) {
@@ -36,7 +64,7 @@ func TestBuildTree(t *testing.T) {
 		"dir3/file6.md":            {Data: []byte("not included in the list of paths")},
 	}
 
-	rootNode, err := BuildTree(memFS, []string{
+	rm, err := BuildTree(memFS, []string{
 		"dir1/file1.txt",
 		"dir1/dir2/file2.go",
 		"dir3/dir4/dir5/file3.txt",
@@ -47,15 +75,11 @@ func TestBuildTree(t *testing.T) {
 		t.Fatalf("error building tree: %v", err)
 	}
 
-	// We expect a root node named '.'
-	if rootNode == nil {
-		t.Fatal("root node is nil")
+	if rm == nil {
+		t.Fatal("root module is nil")
 	}
-	if rootNode.Name() != "." {
-		t.Errorf("expected root name '.' but got '%s'", rootNode.Name())
-	}
-	if rootNode.Type() != Folder {
-		t.Errorf("expected root node to be Folder")
+	if rm.Name != "." {
+		t.Errorf("expected root name '.' but got '%s'", rm.Name)
 	}
 
 	// Quick check token sums.
@@ -63,13 +87,12 @@ func TestBuildTree(t *testing.T) {
 	for range memFS {
 		expectedSum++
 	}
-	tcount := rootNode.TokenCount()
+	tcount := totalTokenCount(rm)
 	if tcount < expectedSum {
 		t.Errorf("expected token count >= %d, got %d", expectedSum, tcount)
 	}
 
-	// Validate structure.
-	gotRoot := toTestNode(rootNode)
+	gotRoot := toTestNode(rm)
 	wantRoot := &testNode{
 		Name: ".",
 		Type: Folder,
@@ -84,13 +107,13 @@ func TestBuildTree(t *testing.T) {
 						Children: []*testNode{
 							{
 								Name: "file2.go",
-								Type: File,
+								Type: F1le,
 							},
 						},
 					},
 					{
 						Name: "file1.txt",
-						Type: File,
+						Type: F1le,
 					},
 				},
 			},
@@ -104,17 +127,17 @@ func TestBuildTree(t *testing.T) {
 						Children: []*testNode{
 							{
 								Name: "file3.txt",
-								Type: File,
+								Type: F1le,
 							},
 							{
 								Name: "file4.txt",
-								Type: File,
+								Type: F1le,
 							},
 						},
 					},
 					{
 						Name: "file5.md",
-						Type: File,
+						Type: F1le,
 					},
 				},
 			},
@@ -138,13 +161,12 @@ func TestCollapseSingleChildFolders(t *testing.T) {
 		"dirA/dirB/ignored.txt":    {Data: []byte("this is ignored and should not be included in the final data structure")},
 	}
 
-	rootNode, err := BuildTree(dirLayout, []string{"dirA/dirB/dirC/fileA.txt"})
+	rm, err := BuildTree(dirLayout, []string{"dirA/dirB/dirC/fileA.txt"})
 	if err != nil {
 		t.Fatalf("unexpected error building tree: %v", err)
 	}
 
-	// We expect the single child folders to be collapsed into 'dirA/dirB/dirC'
-	gotRoot := toTestNode(rootNode)
+	gotRoot := toTestNode(rm)
 	if len(gotRoot.Children) != 1 {
 		t.Fatalf("expected 1 child under root, got %d", len(gotRoot.Children))
 	}

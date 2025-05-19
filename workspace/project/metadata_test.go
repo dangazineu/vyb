@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func Test_selectForRemoval(t *testing.T) {
+func Test_findAllConfigWithinRoot(t *testing.T) {
 	f := fstest.MapFS{
 		"root/.vyb/metadata.yaml":           {Data: []byte("root: .")},
 		"root/dir1/.vyb/metadata.yaml":      {Data: []byte("root: ../")},
@@ -20,54 +20,37 @@ func Test_selectForRemoval(t *testing.T) {
 	}
 
 	tests := []struct {
-		baseDir      string
-		validateRoot bool
-		wantErr      *WrongRootError
-		want         []string
-		explanation  string
+		baseDir     string
+		wantErr     *WrongRootError
+		want        []string
+		explanation string
 	}{
 		{
-			baseDir:      "root/dir3",
-			validateRoot: true,
-			wantErr:      &WrongRootError{},
-			explanation:  "validateRoot is true and no config in given root",
+			baseDir:     "root",
+			want:        []string{".vyb", "dir1/.vyb", "dir1/dir2/.vyb", "dir3/dir4/.vyb"},
+			explanation: "config in given root says project root is the given root",
 		},
 		{
-			baseDir:      "root/dir1",
-			validateRoot: true,
-			wantErr:      newWrongRootErr("../"),
-			explanation:  "validateRoot is true and config in given root says project root is in another path",
+			baseDir:     "root/dir3",
+			want:        []string{"dir4/.vyb"},
+			explanation: "no config in given root",
 		},
 		{
-			baseDir:      "root",
-			validateRoot: true,
-			want:         []string{".vyb", "dir1/.vyb", "dir1/dir2/.vyb", "dir3/dir4/.vyb"},
-			explanation:  "validateRoot is true and config in given root says project root is the given root",
+			baseDir:     "root/dir1",
+			want:        []string{".vyb", "dir2/.vyb"},
+			explanation: "config in given root says project root is another path",
 		},
 		{
-			baseDir:      "root/dir3",
-			validateRoot: false,
-			want:         []string{"dir4/.vyb"},
-			explanation:  "validateRoot is false and no config in given root",
-		},
-		{
-			baseDir:      "root/dir1",
-			validateRoot: false,
-			want:         []string{".vyb", "dir2/.vyb"},
-			explanation:  "validateRoot is false and config in given root says project root is another path",
-		},
-		{
-			baseDir:      "root",
-			validateRoot: false,
-			want:         []string{".vyb", "dir1/.vyb", "dir1/dir2/.vyb", "dir3/dir4/.vyb"},
-			explanation:  "validateRoot is false and config in given root says project root is the given root",
+			baseDir:     "root",
+			want:        []string{".vyb", "dir1/.vyb", "dir1/dir2/.vyb", "dir3/dir4/.vyb"},
+			explanation: "config in given root says project root is the given root",
 		},
 	}
 
 	for i, tc := range tests {
 		t.Run(fmt.Sprintf("TestRemove[%d]", i), func(t *testing.T) {
 			tcfs, _ := fs.Sub(f, tc.baseDir)
-			got, gotErr := findAllConfigWithinRoot(tcfs, tc.validateRoot)
+			got, gotErr := findAllConfigWithinRoot(tcfs)
 
 			if tc.wantErr != nil {
 				if diff := cmp.Diff(*tc.wantErr, gotErr, cmpopts.EquateEmpty()); diff != "" {
@@ -90,16 +73,13 @@ func Test_loadStoredMetadata(t *testing.T) {
 			},
 		}
 
-		meta, err := loadStoredMetadata(memFS)
+		_, err := loadStoredMetadata(memFS)
 		if err != nil {
 			t.Fatalf("loadStoredMetadata returned an error: %v", err)
 		}
-		if meta.Root != "." {
-			t.Errorf("expected root '.' , got '%s'", meta.Root)
-		}
 	})
 
-	t.Run("File not found", func(t *testing.T) {
+	t.Run("F1le not found", func(t *testing.T) {
 		memFS := fstest.MapFS{}
 		_, err := loadStoredMetadata(memFS)
 		if err == nil {
@@ -127,7 +107,6 @@ func Test_buildMetadata(t *testing.T) {
 	}
 
 	want := &Metadata{
-		Root: ".",
 		Modules: &Module{
 			Name: ".",
 			Modules: []*Module{
@@ -188,13 +167,13 @@ func checkNonEmptyFields(t *testing.T, mod *Module) {
 	}
 	for _, f := range mod.Files {
 		if f.MD5 == "" {
-			t.Errorf("File %s has empty MD5", f.Name)
+			t.Errorf("F1le %s has empty MD5", f.Name)
 		}
 		if f.LastModified.IsZero() {
-			t.Errorf("File %s has zero LastModified", f.Name)
+			t.Errorf("F1le %s has zero LastModified", f.Name)
 		}
 		if f.TokenCount < 0 {
-			t.Errorf("File %s has negative TokenCount %d", f.Name, f.TokenCount)
+			t.Errorf("F1le %s has negative TokenCount %d", f.Name, f.TokenCount)
 		}
 	}
 	for _, child := range mod.Modules {

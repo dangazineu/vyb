@@ -16,11 +16,10 @@ var removeCmd = &cobra.Command{
 }
 
 func init() {
-	removeCmd.Flags().BoolVarP(&forceRoot, "force-root", "f", false, "Ignores any previous root references, and deletes all the project configuration within the current working directory and its sub-directories.")
 }
 
 func Remove(_ *cobra.Command, _ []string) {
-	err := project.Remove(".", !forceRoot)
+	err := project.Remove(".")
 	if err != nil {
 		fmt.Printf("Error removing project configuration: %v\n", err)
 		os.Exit(1)
