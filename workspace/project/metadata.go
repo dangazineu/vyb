@@ -10,18 +10,18 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	// Removed the import of internal/summary, as we now rely on summary.BuildTree returning a Module.
-
 	"github.com/dangazineu/vyb/workspace/selector"
 )
 
-// Metadata represents the project-specific metadata file. Only one Metadata file should exist within a given vyb
-// project, and it should be located in the .vyb/ directory under the project root directory.
+// Metadata represents the project-specific metadata file. Only one Metadata
+// file should exist within a given vyb project, and it should be located in
+// the .vyb/ directory under the project root directory.
 type Metadata struct {
 	Modules *Module `yaml:"modules"`
 }
 
-// Module represents a hierarchical grouping of information within a vyb project structure.
+// Module represents a hierarchical grouping of information within a vyb
+// project structure.
 type Module struct {
 	Name    string    `yaml:"name"`
 	Modules []*Module `yaml:"modules"`
@@ -36,8 +36,8 @@ type File struct {
 }
 
 // ConfigFoundError is returned when a project configuration is already found.
-// The error indicates that a project configuration already exists. Remove or buildMetadata the existing
-// configuration if necessary.
+// The error indicates that a project configuration already exists. Remove or
+// buildMetadata the existing configuration if necessary.
 type ConfigFoundError struct{}
 
 func (e ConfigFoundError) Error() string {
@@ -63,11 +63,9 @@ func Create(projectRoot string) error {
 		return err
 	}
 	if len(existingFolders) > 0 {
-		// Replaced generic error with custom error type.
 		return ConfigFoundError{}
 	}
 
-	// Create the .vyb directory in the project root.
 	configDir := filepath.Join(projectRoot, ".vyb")
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		return fmt.Errorf("failed to create .vyb directory: %w", err)
@@ -91,14 +89,14 @@ func Create(projectRoot string) error {
 	return nil
 }
 
-// buildMetadata builds a metadata representation for the files available in the given filesystem
+// buildMetadata builds a metadata representation for the files available in
+// the given filesystem
 func buildMetadata(fsys fs.FS) (*Metadata, error) {
 	selected, err := selector.Select(fsys, "", nil, systemExclusionPatterns, []string{"*"})
 	if err != nil {
 		return nil, fmt.Errorf("failed during file selection: %w", err)
 	}
 
-	// Now we call summary.BuildTree, which returns a *Module
 	rootModule, err := BuildTree(fsys, selected)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build summary module tree: %w", err)
@@ -127,14 +125,15 @@ func loadStoredMetadata(fsys fs.FS) (*Metadata, error) {
 	return &meta, nil
 }
 
-// WrongRootError is returned by Remove when the current directory is not a valid project root.
+// WrongRootError is returned by Remove when the current directory is not a
+// valid project root.
 type WrongRootError struct {
 	Root *string
 }
 
 func (w WrongRootError) Error() string {
 	if w.Root == nil {
-		return "Error: Removal attempted on a folder with no configuration. Root is unknown."
+		return "Error: Folder has no project configuration. Project root is unknown."
 	}
 	return fmt.Sprintf("Error: Removal attempted on a folder that is not configured as the project root. Project root is %s", *w.Root)
 }
@@ -145,39 +144,53 @@ func newWrongRootErr(root string) *WrongRootError {
 	}
 }
 
-// Remove removes the metadata folder directly under a given project root directory.
-// projectRoot must point to a directory with a .vyb directory under it, otherwise the operation fails.
+// Remove removes the metadata folder directly under a given project root
+// directory. projectRoot must point to a directory with a .vyb directory under
+// it, otherwise the operation fails.
 func Remove(projectRoot string) error {
-
-	_, err := filepath.Abs(projectRoot)
+	absPath, err := filepath.Abs(projectRoot)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to determine absolute path of project root: %w", err)
 	}
 
-	//TODO(vyb): validate that there is a .vyb directory under the given root, and delete it. Return an error if no .vyb directory is found, or if the operation fails
+	configDir := filepath.Join(absPath, ".vyb")
+	info, err := os.Stat(configDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return newWrongRootErr(absPath)
+		}
+		return fmt.Errorf("failed to stat .vyb directory: %w", err)
+	}
+
+	if !info.IsDir() {
+		return newWrongRootErr(absPath)
+	}
+
+	if err := os.RemoveAll(configDir); err != nil {
+		return fmt.Errorf("failed to remove .vyb directory: %w", err)
+	}
 
 	return nil
 }
 
-// findAllConfigWithinRoot recursively scans the provided file system for directories named ".vyb".
-// It returns a slice of paths (relative to the provided file system's root) where ".vyb" directories are found.
+// findAllConfigWithinRoot recursively scans the provided file system for directories named
+// ".vyb". It returns a slice of paths (relative to the provided file system's root) where
+// ".vyb" directories are found.
 func findAllConfigWithinRoot(projectRoot fs.FS) ([]string, error) {
-	// Recursively find all directories named ".vyb" under the current working directory.
-	var toDelete []string
+	var matches []string
 	err := fs.WalkDir(projectRoot, ".", func(path string, info fs.DirEntry, err error) error {
 		if err != nil {
-			// Skip this path
 			return nil
 		}
 		if info.IsDir() && info.Name() == ".vyb" {
-			toDelete = append(toDelete, path)
-			return fs.SkipDir // Skip processing contents.
+			matches = append(matches, path)
+			return fs.SkipDir
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error walking the file tree: %w", err)
 	}
-	sort.Strings(toDelete)
-	return toDelete, nil
+	sort.Strings(matches)
+	return matches, nil
 }
