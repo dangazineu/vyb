@@ -27,10 +27,7 @@ type Module struct {
 	Modules []*Module  `yaml:"modules"`
 	Files   []*FileRef `yaml:"files"`
 
-	//Context is an LLM-provided textual description of the context in which a given Module exists.
-	Context string `yaml:"context"`
-	//Summary is an LLM-provided textual description of the content that lives within a given Module.
-	Summary string `yaml:"summary"`
+	Annotation Annotation `yaml:"annotation"`
 }
 
 type FileRef struct {
