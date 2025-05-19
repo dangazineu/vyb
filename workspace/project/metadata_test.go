@@ -80,3 +80,29 @@ func Test_selectForRemoval(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadFromFS(t *testing.T) {
+	t.Run("Success case", func(t *testing.T) {
+		memFS := fstest.MapFS{
+			".vyb/metadata.yaml": {
+				Data: []byte("root: .\nmodules:\n  name: hello\n"),
+			},
+		}
+
+		meta, err := Load(memFS)
+		if err != nil {
+			t.Fatalf("Load returned an error: %v", err)
+		}
+		if meta.Root != "." {
+			t.Errorf("expected root '.', got '%s'", meta.Root)
+		}
+	})
+
+	t.Run("File not found", func(t *testing.T) {
+		memFS := fstest.MapFS{}
+		_, err := Load(memFS)
+		if err == nil {
+			t.Fatal("expected error for missing metadata.yaml, got nil")
+		}
+	})
+}

@@ -113,6 +113,23 @@ func Create(projectRoot string) error {
 	return nil
 }
 
+// Load reads the .vyb/metadata.yaml in the given fs.FS.
+// It parses its contents into a Metadata struct. If the file is
+// not found or if parsing fails, it returns an error.
+func Load(fsys fs.FS) (*Metadata, error) {
+	data, err := fs.ReadFile(fsys, ".vyb/metadata.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read metadata file .vyb/metadata.yaml: %w", err)
+	}
+
+	var meta Metadata
+	if err := yaml.Unmarshal(data, &meta); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal metadata from .vyb/metadata.yaml: %w", err)
+	}
+
+	return &meta, nil
+}
+
 // nodeToModule converts a summary.Node (folder) into a corresponding Module structure.
 func nodeToModule(n summary.Node, fsys fs.FS) (*Module, error) {
 	if n.Type() == summary.File {
@@ -225,7 +242,7 @@ func newWrongRootErr(root string) *WrongRootError {
 }
 
 // Remove deletes all metadata folders and files, directly and indirectly under a given project root directory.
-// It deletes every ".vyb" folder under the project root recursively. Returns an error if any deletion fails.
+// It deletes every ".vyb" directory under the project root recursively. Returns an error if any deletion fails.
 // When validateRoot is set to true, only performs the removal if a valid Metadata file is stored in a `.vyb` folder
 // under the given root directory, and it represents a project root (i.e.: `Root` value is `.`).
 func Remove(projectRoot string, validateRoot bool) error {
