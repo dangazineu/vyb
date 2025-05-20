@@ -109,7 +109,6 @@ func createAnnotation(m *Module) (Annotation, error) {
 	// TODO(vyb): pass the right parameters to payload.BuildModuleContextUserMessage.
 	userMsg, _ := payload.BuildModuleContextUserMessage(nil, nil)
 
-	// TODO(vyb): update these instructions based on the expected structure of userMsg and payload.
 	// System prompt instructing the LLM to summarize code into JSON schema.
 	systemMessage := `You are a summarizer. Please read the following code and produce a short and long description in JSON.
 Your output must match this JSON schema, with "proposals" set to an empty array.
