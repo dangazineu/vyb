@@ -37,6 +37,13 @@ type openaiResponse struct {
 	} `json:"choices"`
 }
 
+// TODO(vyb): make moduleContext implement payload.ModuleContext
+type moduleContext struct {
+	ExternalContext string `json:"external_context,omitempty"`
+	InternalContext string `json:"internal_context,omitempty"`
+	PublicContext   string `json:"public_context,omitempty"`
+}
+
 // workspaceChangeProposal is an unexported struct backing the WorkspaceChangeProposal interface.
 type workspaceChangeProposal struct {
 	Description string               `json:"description,omitempty"`
@@ -85,9 +92,35 @@ func (f *fileChangeProposal) GetDelete() bool {
 	return f.Delete
 }
 
+func GetModuleContext(systemMessage, userMessage string) (payload.ModuleContext, error) {
+	openaiResp, err := callOpenAI(systemMessage, userMessage, schema.GetModuleContextSchema())
+	if err != nil {
+		return nil, err
+	}
+	var context moduleContext
+	if err := json.Unmarshal([]byte(openaiResp.Choices[0].Message.Content), &context); err != nil {
+		return nil, err
+	}
+
+	return &context, nil
+}
+
 // GetWorkspaceChangeProposals sends the given developer and user messages to the OpenAI API using the specified model.
 // It returns the content of the first message from the API's response.
 func GetWorkspaceChangeProposals(systemMessage, userMessage string) (payload.WorkspaceChangeProposal, error) {
+	openaiResp, err := callOpenAI(systemMessage, userMessage, schema.GetWorkspaceChangeProposalSchema())
+	if err != nil {
+		return nil, err
+	}
+	var proposedChanges workspaceChangeProposal
+	if err := json.Unmarshal([]byte(openaiResp.Choices[0].Message.Content), &proposedChanges); err != nil {
+		return nil, err
+	}
+
+	return &proposedChanges, nil
+}
+
+func callOpenAI(systemMessage, userMessage string, structuredOutput schema.StructuredOutputSchema) (*openaiResponse, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
 		return nil, errors.New("OPENAI_API_KEY is not set")
@@ -108,7 +141,7 @@ func GetWorkspaceChangeProposals(systemMessage, userMessage string) (payload.Wor
 		},
 		ResponseFormat: responseFormat{
 			Type:       "json_schema",
-			JSONSchema: schema.GetWorkspaceChangeProposalSchema(),
+			JSONSchema: structuredOutput,
 		},
 	}
 
@@ -155,10 +188,5 @@ func GetWorkspaceChangeProposals(systemMessage, userMessage string) (payload.Wor
 		return nil, errors.New("no choices returned from OpenAI")
 	}
 
-	var internal workspaceChangeProposal
-	if err := json.Unmarshal([]byte(openaiResp.Choices[0].Message.Content), &internal); err != nil {
-		return nil, err
-	}
-
-	return &internal, nil
+	return &openaiResp, nil
 }

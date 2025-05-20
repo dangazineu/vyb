@@ -1,5 +1,5 @@
 {
-  "name": "module_summary_schema",
+  "name": "module_context_schema",
   "schema": {
     "type": "object",
     "properties": {
@@ -21,18 +21,14 @@
               "type": "string",
               "description": "Summary and information about files directly within this specific module."
             },
-            "exposed_context": {
+            "public_context": {
               "type": "string",
-              "description": "Summary and information about files directly within this module, as well as any of its children. To be used by sibling modules, and modules outside its internal hierarchy."
-            },
-            "delete": {
-              "type": "boolean",
-              "description": "True if this file should be deleted. For simplicity, moving or renaming files should be handled as a new file creation + existing file deletion."
+              "description": "Summary and information about files directly within this module, as well as any of its children. This will be used by sibling modules, and modules outside of this module's hierarchy."
             }
           },
           "required": [
             "internal_context",
-            "exposed_context"
+            "public_context"
           ],
           "additionalProperties": false
         }
