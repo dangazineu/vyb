@@ -3,6 +3,7 @@ package payload
 import (
 	"fmt"
 	"io/fs"
+	"path/filepath"
 	"strings"
 )
 
@@ -36,10 +37,17 @@ type ModuleContextRequest struct {
 	SubModules    []*ModuleContextRequest
 }
 
-// BuildModuleContextUserMessage constructs a Markdown-formatted string that includes the content of all files in scope.
-// projectRoot represents the base directory for this project, and all file paths in the given filePaths parameter are relative to projectRoot.
+// BuildModuleContextUserMessage constructs a Markdown-formatted string that
+// includes the content of all files referenced by the provided
+// ModuleContextRequest tree.  `projectRoot` is expected to be an fs.FS rooted
+// at the workspace root, and every file path contained in the request is
+// interpreted as relative to the module to which it belongs.
+//
+// If any referenced file cannot be read this function returns an error.
 func BuildModuleContextUserMessage(projectRoot fs.FS, request *ModuleContextRequest) (string, error) {
-	// TODO(vyb): implement this function in a similar way to BuildUserMessage. Module names are hierarchically relative to their parent, and the root module is relative to the projectRoot fs.FS. File paths are relative to the module path in which they are included.
+	// Module names are hierarchically relative to their parent,
+	// and the root module is relative to the projectRoot fs.FS.
+	// File paths are relative to the module path in which they are included.
 	// For example:
 	// module: a/b
 	//  - file: c.txt
@@ -47,7 +55,64 @@ func BuildModuleContextUserMessage(projectRoot fs.FS, request *ModuleContextRequ
 	//    - file: f.txt
 	// to read c.txt, use fs.ReadFile(projectRoot, "a/b/c.txt")
 	// to read f.txt, use fs.ReadFile(projectRoot, "a/b/d/e/f.txt")
-	return "", nil
+	if projectRoot == nil {
+		return "", fmt.Errorf("projectRoot fs.FS must not be nil")
+	}
+	if request == nil {
+		return "", fmt.Errorf("ModuleContextRequest must not be nil")
+	}
+
+	var files []fileEntry
+
+	// Recursively walk the ModuleContextRequest tree collecting file entries.
+	var walk func(req *ModuleContextRequest, modulePrefix string) error
+	walk = func(req *ModuleContextRequest, modulePrefix string) error {
+		if req == nil {
+			return nil
+		}
+
+		// Compute this module's absolute (from project root) path.  The root
+		// module typically has an empty name – handle both cases cleanly.
+		currentPrefix := modulePrefix
+		if req.ModuleContext != nil && (*req.ModuleContext).GetModuleName() != "" {
+			if currentPrefix == "" || currentPrefix == "." {
+				currentPrefix = (*req.ModuleContext).GetModuleName()
+			} else {
+				currentPrefix = filepath.Join(currentPrefix, (*req.ModuleContext).GetModuleName())
+			}
+		}
+
+		// Process files directly declared in this module.
+		for _, relFile := range req.FilePaths {
+			fullPath := relFile
+			if currentPrefix != "" && currentPrefix != "." {
+				fullPath = filepath.Join(currentPrefix, relFile)
+			}
+
+			data, err := fs.ReadFile(projectRoot, fullPath)
+			if err != nil {
+				return fmt.Errorf("failed to read file %s: %w", fullPath, err)
+			}
+			files = append(files, fileEntry{
+				Path:    fullPath,
+				Content: string(data),
+			})
+		}
+
+		// Recurse into sub-modules.
+		for _, sub := range req.SubModules {
+			if err := walk(sub, currentPrefix); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	if err := walk(request, ""); err != nil {
+		return "", err
+	}
+
+	return buildPayload(files), nil
 }
 
 // buildPayload constructs a Markdown payload from a slice of fileEntry.
