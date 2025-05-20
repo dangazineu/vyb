@@ -1,0 +1,47 @@
+{
+  "name": "module_summary_schema",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "modules": {
+        "type": "array",
+        "description": "A list of modules",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name of the module"
+            },
+            "external_context": {
+              "type": "string",
+              "description": "Summary and information about parent and sibling modules that help contextualize the existence and purpose of this module. This is only present when the module has a parent."
+            },
+            "internal_context": {
+              "type": "string",
+              "description": "Summary and information about files directly within this specific module."
+            },
+            "exposed_context": {
+              "type": "string",
+              "description": "Summary and information about files directly within this module, as well as any of its children. To be used by sibling modules, and modules outside its internal hierarchy."
+            },
+            "delete": {
+              "type": "boolean",
+              "description": "True if this file should be deleted. For simplicity, moving or renaming files should be handled as a new file creation + existing file deletion."
+            }
+          },
+          "required": [
+            "internal_context",
+            "exposed_context"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "modules"
+    ],
+    "additionalProperties": false
+  },
+  "strict": true
+}

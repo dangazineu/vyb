@@ -77,3 +77,5 @@ type FileChangeProposal interface {
 	GetContent() string
 	GetDelete() bool
 }
+
+//TODO(vyb): create an interface that matches module_summary_schema.json, just like WorkspaceChangeProposal matches workspace+change_proposal_schema.json
