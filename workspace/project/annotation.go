@@ -18,11 +18,11 @@ type Annotation struct {
 	PublicContext string `yaml:"public-context"`
 }
 
-// buildSummaries navigates the modules graph, starting from the leaf-most
+// annotate navigates the modules graph, starting from the leaf-most
 // modules back to the root. For each module that has no Annotation, it calls
 // createAnnotation for it after all its submodules are annotated. The creation of
 // annotations is performed in parallel using goroutines.
-func buildSummaries(metadata *Metadata) error {
+func annotate(metadata *Metadata) error {
 	if metadata == nil || metadata.Modules == nil {
 		return nil
 	}

@@ -62,7 +62,7 @@ func BuildModuleContextUserMessage(projectRoot fs.FS, request *ModuleContextRequ
 		return "", fmt.Errorf("ModuleContextRequest must not be nil")
 	}
 
-	var files []fileEntry
+	var sb strings.Builder
 
 	// Recursively walk the ModuleContextRequest tree collecting file entries.
 	var walk func(req *ModuleContextRequest, modulePrefix string) error
@@ -82,6 +82,8 @@ func BuildModuleContextUserMessage(projectRoot fs.FS, request *ModuleContextRequ
 			}
 		}
 
+		writeModule(sb, currentPrefix, *req.ModuleContext)
+
 		// Process files directly declared in this module.
 		for _, relFile := range req.FilePaths {
 			fullPath := relFile
@@ -93,10 +95,7 @@ func BuildModuleContextUserMessage(projectRoot fs.FS, request *ModuleContextRequ
 			if err != nil {
 				return fmt.Errorf("failed to read file %s: %w", fullPath, err)
 			}
-			files = append(files, fileEntry{
-				Path:    fullPath,
-				Content: string(data),
-			})
+			writeFile(sb, fullPath, string(data))
 		}
 
 		// Recurse into sub-modules.
@@ -112,7 +111,7 @@ func BuildModuleContextUserMessage(projectRoot fs.FS, request *ModuleContextRequ
 		return "", err
 	}
 
-	return buildPayload(files), nil
+	return sb.String(), nil
 }
 
 // buildPayload constructs a Markdown payload from a slice of fileEntry.
@@ -121,17 +120,37 @@ func buildPayload(files []fileEntry) string {
 	var sb strings.Builder
 	for _, f := range files {
 		// Determine language based on the file extension.
-		lang := getLanguageFromFilename(f.Path)
-		sb.WriteString(fmt.Sprintf("# %s\n", f.Path))
-		sb.WriteString(fmt.Sprintf("```%s\n", lang))
-		sb.WriteString(f.Content)
-		// Ensure a trailing newline before closing the code block.
-		if !strings.HasSuffix(f.Content, "\n") {
-			sb.WriteString("\n")
-		}
-		sb.WriteString("```\n\n")
+		writeFile(sb, f.Path, f.Content)
 	}
 	return sb.String()
+}
+
+func writeModule(sb strings.Builder, path string, context ModuleContext) {
+	sb.WriteString(fmt.Sprintf("# %s\n", path))
+	if context.GetExternalContext() != "" {
+		sb.WriteString(fmt.Sprintf("# External Context\n"))
+		sb.WriteString(fmt.Sprintf("%s\n", context.GetExternalContext()))
+	}
+	if context.GetInternalContext() != "" {
+		sb.WriteString(fmt.Sprintf("# Internal Context\n"))
+		sb.WriteString(fmt.Sprintf("%s\n", context.GetInternalContext()))
+	}
+	if context.GetPublicContext() != "" {
+		sb.WriteString(fmt.Sprintf("# Public Context\n"))
+		sb.WriteString(fmt.Sprintf("%s\n", context.GetPublicContext()))
+	}
+}
+
+func writeFile(sb strings.Builder, filepath, content string) {
+	lang := getLanguageFromFilename(filepath)
+	sb.WriteString(fmt.Sprintf("# %s\n", filepath))
+	sb.WriteString(fmt.Sprintf("```%s\n", lang))
+	sb.WriteString(content)
+	// Ensure a trailing newline before closing the code block.
+	if !strings.HasSuffix(content, "\n") {
+		sb.WriteString("\n")
+	}
+	sb.WriteString("```\n\n")
 }
 
 // getLanguageFromFilename returns a language identifier based on file extension.

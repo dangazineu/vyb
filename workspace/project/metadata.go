@@ -69,6 +69,11 @@ func Create(projectRoot string) error {
 		return fmt.Errorf("failed to build metadata: %w", err)
 	}
 
+	err = annotate(metadata)
+	if err != nil {
+		return fmt.Errorf("failed to annotate metadata: %w", err)
+	}
+
 	data, err := yaml.Marshal(metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata.yaml: %w", err)
