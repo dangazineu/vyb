@@ -74,20 +74,15 @@ func collectModulesInPostOrder(root *Module) []*Module {
 }
 
 // createAnnotation calls OpenAI with the files contained in a given module, building a summary.
-// The result is stored in Annotation.Context and Annotation.Summary.
-// TODO(vyb): Implementation needed. Use selector.Select to gather all files from within each module,
-// call openAI with a summarization prompt, parse the returned summary into the summary field in the annotation.
-// Use payload.go to convert file contents into a prompt (add textual prompt in the developer message).
-// Use o4-mini model
 func createAnnotation(m *Module) (Annotation, error) {
-	// Gather file paths from this module (including submodules) so we can build a user message.
+	// Gather file paths from this module (including submodules).
 	filePaths := gatherModuleFilePaths(m)
 	if len(filePaths) == 0 {
 		// No files: nothing to summarize.
 		return Annotation{}, nil
 	}
 
-	// We assume the current working directory is the project root.
+	// Use current working directory as project root.
 	rootFS := os.DirFS(".")
 
 	// Build user message with all these files.
@@ -96,29 +91,26 @@ func createAnnotation(m *Module) (Annotation, error) {
 		return Annotation{}, fmt.Errorf("failed to build user message: %w", err)
 	}
 
-	// We'll craft a short system message that instructs the LLM to summarize.
-	// We rely on the existing JSON schema, so we place an empty proposals array.
-	// We'll put our short text in 'summary' and a bit longer text in 'description'.
-	systemMessage := `You are a summarizer. Please read the following code and produce a short and long description in JSON.\n` +
-		`Your output must match this JSON schema, with "proposals" set to an empty array.\n` +
-		`Use "summary" for a one-liner, and "description" for a paragraph.\n`
+	// System prompt instructing the LLM to summarize code into JSON schema.
+	systemMessage := `You are a summarizer. Please read the following code and produce a short and long description in JSON.
+Your output must match this JSON schema, with "proposals" set to an empty array.
+Use "summary" for a one-liner, and "description" for a paragraph.`
 
+	// Call OpenAI to get the workspace change proposal containing summary and description.
 	proposal, err := openai.GetWorkspaceChangeProposals(systemMessage, userMsg)
 	if err != nil {
 		return Annotation{}, fmt.Errorf("failed to call openAI: %w", err)
 	}
 
+	// Populate the Annotation: Context holds the paragraph (description), Summary holds the one-liner.
 	ann := Annotation{
 		Context: proposal.GetDescription(),
 		Summary: proposal.GetSummary(),
 	}
-
 	return ann, nil
 }
 
 // gatherModuleFilePaths recursively visits the module and its children, collecting the relative paths.
-// The module.Name stores a relative path, and each file's Name is the filename only.
-// So we reconstruct full paths by combining the module's path with the file's name.
 func gatherModuleFilePaths(m *Module) []string {
 	var results []string
 	var walk func(mod *Module, prefix string)
