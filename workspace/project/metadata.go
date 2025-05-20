@@ -27,7 +27,7 @@ type Module struct {
 	Modules []*Module  `yaml:"modules"`
 	Files   []*FileRef `yaml:"files"`
 
-	Annotation Annotation `yaml:"annotation"`
+	Annotation *Annotation `yaml:"annotation"`
 }
 
 type FileRef struct {

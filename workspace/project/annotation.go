@@ -18,42 +18,64 @@ type Annotation struct {
 
 // buildSummaries navigates the modules graph, starting from the leaf-most
 // modules back to the root. For each module that has no Annotation, it calls
-// a function to create an Annotation for it, and ensures no error was returned.
-// The creation of annotations is performed in parallel using goroutines.
+// createAnnotation for it after all its submodules are annotated. The creation of
+// annotations is performed in parallel using goroutines.
 func buildSummaries(metadata *Metadata) error {
 	if metadata == nil || metadata.Modules == nil {
 		return nil
 	}
 
+	// Collect modules in post-order so children come before parents.
 	modules := collectModulesInPostOrder(metadata.Modules)
-
+	// Channel to collect errors from annotation goroutines.
 	errCh := make(chan error, len(modules))
-
-	done := make(chan struct{})
-
-	go func() {
-		for _, mod := range modules {
-			if mod.Annotation.Context == "" && mod.Annotation.Summary == "" {
-				ann, err := createAnnotation(mod)
-				if err != nil {
-					errCh <- fmt.Errorf("failed to create annotation for module %q: %w", mod.Name, err)
-					return
-				}
-				mod.Annotation = ann
-			}
-		}
-		done <- struct{}{}
-	}()
-
-	<-done
-	close(errCh)
-
-	for e := range errCh {
-		if e != nil {
-			return e
+	// Create a done channel for each module to signal completion of annotation.
+	dones := make(map[*Module]chan struct{})
+	for _, m := range modules {
+		dones[m] = make(chan struct{})
+	}
+	// Pre-close done channels for modules already annotated.
+	for _, m := range modules {
+		if m.Annotation != nil {
+			close(dones[m])
 		}
 	}
 
+	// Launch annotation tasks.
+	for _, m := range modules {
+		if m.Annotation != nil {
+			continue
+		}
+		// Capture m for the goroutine.
+		go func(mod *Module) {
+			// Wait for all submodules to complete.
+			for _, sub := range mod.Modules {
+				<-dones[sub]
+			}
+			// Create annotation.
+			ann, err := createAnnotation(mod)
+			if err != nil {
+				errCh <- fmt.Errorf("failed to create annotation for module %q: %w", mod.Name, err)
+				// Signal done to avoid blocking parents.
+				close(dones[mod])
+				return
+			}
+			mod.Annotation = &ann
+			close(dones[mod])
+		}(m)
+	}
+
+	// Wait for root module to finish annotation.
+	root := metadata.Modules
+	<-dones[root]
+	close(errCh)
+
+	// Check for errors.
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
