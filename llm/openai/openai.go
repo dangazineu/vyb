@@ -37,11 +37,33 @@ type openaiResponse struct {
 	} `json:"choices"`
 }
 
-// TODO(vyb): make moduleContext implement payload.ModuleContext
 type moduleContext struct {
+	Name            string `json:"name,omitempty"`
 	ExternalContext string `json:"external_context,omitempty"`
 	InternalContext string `json:"internal_context,omitempty"`
 	PublicContext   string `json:"public_context,omitempty"`
+}
+
+// Ensure moduleContext implements payload.ModuleContext.
+var _ payload.ModuleContext = (*moduleContext)(nil)
+
+func (m *moduleContext) GetModuleName() string {
+	return m.Name
+}
+
+// GetExternalContext returns the external context of the module.
+func (m *moduleContext) GetExternalContext() string {
+	return m.ExternalContext
+}
+
+// GetInternalContext returns the internal context of the module.
+func (m *moduleContext) GetInternalContext() string {
+	return m.InternalContext
+}
+
+// GetPublicContext returns the public context of the module.
+func (m *moduleContext) GetPublicContext() string {
+	return m.PublicContext
 }
 
 // workspaceChangeProposal is an unexported struct backing the WorkspaceChangeProposal interface.
@@ -93,7 +115,7 @@ func (f *fileChangeProposal) GetDelete() bool {
 }
 
 func GetModuleContext(systemMessage, userMessage string) (payload.ModuleContext, error) {
-	openaiResp, err := callOpenAI(systemMessage, userMessage, schema.GetModuleContextSchema())
+	openaiResp, err := callOpenAI(systemMessage, userMessage, schema.GetModuleContextSchema(), "o4-mini")
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +130,13 @@ func GetModuleContext(systemMessage, userMessage string) (payload.ModuleContext,
 // GetWorkspaceChangeProposals sends the given developer and user messages to the OpenAI API using the specified model.
 // It returns the content of the first message from the API's response.
 func GetWorkspaceChangeProposals(systemMessage, userMessage string) (payload.WorkspaceChangeProposal, error) {
-	openaiResp, err := callOpenAI(systemMessage, userMessage, schema.GetWorkspaceChangeProposalSchema())
+	// as of May 2025, using "o3" model requires verifying your ID with OpenAI.
+	// See https://platform.openai.com/docs/models/o3 for more details.
+	// Switch to "o1" if you have problems running this model -- vyb works better with "o1" than with any "o#-mini"
+	model := "o3"
+
+	openaiResp, err := callOpenAI(systemMessage, userMessage, schema.GetWorkspaceChangeProposalSchema(), model)
+
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +148,7 @@ func GetWorkspaceChangeProposals(systemMessage, userMessage string) (payload.Wor
 	return &proposedChanges, nil
 }
 
-func callOpenAI(systemMessage, userMessage string, structuredOutput schema.StructuredOutputSchema) (*openaiResponse, error) {
+func callOpenAI(systemMessage, userMessage string, structuredOutput schema.StructuredOutputSchema, model string) (*openaiResponse, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
 		return nil, errors.New("OPENAI_API_KEY is not set")
@@ -128,7 +156,7 @@ func callOpenAI(systemMessage, userMessage string, structuredOutput schema.Struc
 
 	// Construct request payload.
 	reqPayload := request{
-		Model: "o4-mini",
+		Model: model,
 		Messages: []message{
 			{
 				Role:    "system",

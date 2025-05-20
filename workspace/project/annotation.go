@@ -2,18 +2,20 @@ package project
 
 import (
 	"fmt"
+	"github.com/dangazineu/vyb/llm/payload"
 	"os"
 
 	"github.com/dangazineu/vyb/llm/openai"
-	"github.com/dangazineu/vyb/llm/payload"
 )
 
 // Annotation holds context and summary for a Module.
 type Annotation struct {
-	//Context is an LLM-provided textual description of the context in which a given Module exists.
-	Context string `yaml:"context"`
-	//Summary is an LLM-provided textual description of the content that lives within a given Module.
-	Summary string `yaml:"summary"`
+	//ExternalContext is an LLM-provided textual description of the context in which a given Module exists.
+	ExternalContext string `yaml:"external-context"`
+	//InternalContext is an LLM-provided textual description of the content that lives within a given Module.
+	InternalContext string `yaml:"internal-context"`
+	//PublicContext is an LLM-provided textual description of content that his Module exposes for other modules to use.
+	PublicContext string `yaml:"public-context"`
 }
 
 // buildSummaries navigates the modules graph, starting from the leaf-most
@@ -104,30 +106,26 @@ func createAnnotation(m *Module) (Annotation, error) {
 		return Annotation{}, nil
 	}
 
-	// Use current working directory as project root.
-	rootFS := os.DirFS(".")
+	// TODO(vyb): pass the right parameters to payload.BuildModuleContextUserMessage.
+	userMsg, _ := payload.BuildModuleContextUserMessage(nil, nil)
 
-	// Build user message with all these files.
-	userMsg, err := payload.BuildUserMessage(rootFS, filePaths)
-	if err != nil {
-		return Annotation{}, fmt.Errorf("failed to build user message: %w", err)
-	}
-
+	// TODO(vyb): update these instructions based on the expected structure of userMsg and payload.
 	// System prompt instructing the LLM to summarize code into JSON schema.
 	systemMessage := `You are a summarizer. Please read the following code and produce a short and long description in JSON.
 Your output must match this JSON schema, with "proposals" set to an empty array.
 Use "summary" for a one-liner, and "description" for a paragraph.`
 
 	// Call OpenAI to get the workspace change proposal containing summary and description.
-	proposal, err := openai.GetWorkspaceChangeProposals(systemMessage, userMsg)
+	context, err := openai.GetModuleContext(systemMessage, userMsg)
 	if err != nil {
 		return Annotation{}, fmt.Errorf("failed to call openAI: %w", err)
 	}
 
-	// Populate the Annotation: Context holds the paragraph (description), Summary holds the one-liner.
+	// Populate the Annotation: ExternalContext holds the paragraph (description), InternalContext holds the one-liner.
 	ann := Annotation{
-		Context: proposal.GetDescription(),
-		Summary: proposal.GetSummary(),
+		ExternalContext: context.GetExternalContext(),
+		InternalContext: context.GetInternalContext(),
+		PublicContext:   context.GetPublicContext(),
 	}
 	return ann, nil
 }

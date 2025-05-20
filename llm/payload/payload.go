@@ -30,6 +30,26 @@ func BuildUserMessage(projectRoot fs.FS, filePaths []string) (string, error) {
 	return markdown, nil
 }
 
+type ModuleContextRequest struct {
+	FilePaths     []string
+	ModuleContext *ModuleContext
+	SubModules    []*ModuleContextRequest
+}
+
+// BuildModuleContextUserMessage constructs a Markdown-formatted string that includes the content of all files in scope.
+// projectRoot represents the base directory for this project, and all file paths in the given filePaths parameter are relative to projectRoot.
+func BuildModuleContextUserMessage(projectRoot fs.FS, request *ModuleContextRequest) (string, error) {
+	// TODO(vyb): implement this function in a similar way to BuildUserMessage. Module names are hierarchically relative to their parent, and the root module is relative to the projectRoot fs.FS. File paths are relative to the module path in which they are included.
+	// For example:
+	// module: a/b
+	//  - file: c.txt
+	//  - sub-module: d/e
+	//    - file: f.txt
+	// to read c.txt, use fs.ReadFile(projectRoot, "a/b/c.txt")
+	// to read f.txt, use fs.ReadFile(projectRoot, "a/b/d/e/f.txt")
+	return "", nil
+}
+
 // buildPayload constructs a Markdown payload from a slice of fileEntry.
 // Each file is represented with an H1 header for its relative path, followed by a code block.
 func buildPayload(files []fileEntry) string {
@@ -79,6 +99,7 @@ type FileChangeProposal interface {
 }
 
 type ModuleContext interface {
+	GetModuleName() string
 	GetExternalContext() string
 	GetInternalContext() string
 	GetPublicContext() string
