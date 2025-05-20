@@ -1,5 +1,4 @@
 name: "inferspec"
-model: "o1"
 # TODO the prompts for "vyb refine" and "vyb inferspec" are very similar. Find a way to enable reuse.
 prompt: |
   You are an assistant tasked with reviewing and refining an application specification written in Markdown. 

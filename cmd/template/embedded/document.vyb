@@ -1,5 +1,4 @@
 name: "document"
-model: "o1"
 prompt: |
   You are a software engineer tasked with analyzing the code and documentation available in an application workspace,
   and writing a summary explanation of what the application is for, what it does, how it is used, etc.

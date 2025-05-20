@@ -2,10 +2,10 @@ package openai
 
 import (
 	"bytes"
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dangazineu/vyb/llm/openai/internal/schema"
 	"github.com/dangazineu/vyb/llm/payload"
 	"io"
 	"net/http"
@@ -26,8 +26,8 @@ type request struct {
 }
 
 type responseFormat struct {
-	Type       string                 `json:"type"`
-	JSONSchema StructuredOutputSchema `json:"json_schema"`
+	Type       string                        `json:"type"`
+	JSONSchema schema.StructuredOutputSchema `json:"json_schema"`
 }
 
 // openaiResponse defines the expected response structure from the OpenAI API.
@@ -85,9 +85,9 @@ func (f *fileChangeProposal) GetDelete() bool {
 	return f.Delete
 }
 
-// CallOpenAI sends the given developer and user messages to the OpenAI API using the specified model.
+// GetWorkspaceChangeProposals sends the given developer and user messages to the OpenAI API using the specified model.
 // It returns the content of the first message from the API's response.
-func CallOpenAI(systemMessage, userMessage, model string) (payload.WorkspaceChangeProposal, error) {
+func GetWorkspaceChangeProposals(systemMessage, userMessage string) (payload.WorkspaceChangeProposal, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
 		return nil, errors.New("OPENAI_API_KEY is not set")
@@ -95,7 +95,7 @@ func CallOpenAI(systemMessage, userMessage, model string) (payload.WorkspaceChan
 
 	// Construct request payload.
 	reqPayload := request{
-		Model: model,
+		Model: "o4-mini",
 		Messages: []message{
 			{
 				Role:    "system",
@@ -108,7 +108,7 @@ func CallOpenAI(systemMessage, userMessage, model string) (payload.WorkspaceChan
 		},
 		ResponseFormat: responseFormat{
 			Type:       "json_schema",
-			JSONSchema: GetResponseSchema(),
+			JSONSchema: schema.GetWorkspaceChangeProposalSchema(),
 		},
 	}
 
@@ -161,31 +161,4 @@ func CallOpenAI(systemMessage, userMessage, model string) (payload.WorkspaceChan
 	}
 
 	return &internal, nil
-}
-
-//go:embed schema/*
-var embedded embed.FS
-
-// GetResponseSchema reads configuration files from the embedded directory and parses the JSON schema.
-func GetResponseSchema() StructuredOutputSchema {
-	data, _ := embedded.ReadFile("schema/structured_output.json")
-	// Parse the JSON file into a temporary struct to extract the "schema" field.
-	var resp StructuredOutputSchema
-	_ = json.Unmarshal(data, &resp)
-	return resp
-}
-
-type StructuredOutputSchema struct {
-	Schema JSONSchema `json:"schema,omitempty"`
-	Name   string     `json:"name,omitempty"`
-	Strict bool       `json:"strict,omitempty"`
-}
-
-type JSONSchema struct {
-	Description          string                 `json:"description,omitempty"`
-	Type                 string                 `json:"type,omitempty"`
-	Properties           map[string]*JSONSchema `json:"properties,omitempty"`
-	Items                *JSONSchema            `json:"items,omitempty"`
-	Required             []string               `json:"required,omitempty"`
-	AdditionalProperties bool                   `json:"additionalProperties"`
 }

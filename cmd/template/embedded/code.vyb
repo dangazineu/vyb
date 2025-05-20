@@ -1,5 +1,4 @@
 name: "code"
-model: "o1"
 prompt: |
   You are a software engineer tasked with
   implementing an application according to the provided specification,

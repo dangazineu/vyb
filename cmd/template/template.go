@@ -154,7 +154,7 @@ func execute(cmd *cobra.Command, args []string, def *Definition) error {
 
 	systemMessage := rendered
 
-	proposal, err := openai.CallOpenAI(systemMessage, userMsg, def.Model)
+	proposal, err := openai.GetWorkspaceChangeProposals(systemMessage, userMsg)
 	if err != nil {
 		return err
 	}
