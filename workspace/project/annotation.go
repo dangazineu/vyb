@@ -2,27 +2,39 @@ package project
 
 import (
 	"fmt"
-	"github.com/dangazineu/vyb/llm/payload"
+	"io/fs"
 	"os"
 
 	"github.com/dangazineu/vyb/llm/openai"
+	"github.com/dangazineu/vyb/llm/payload"
 )
 
 // Annotation holds context and summary for a Module.
+// ExternalContext is an LLM-provided textual description of the context in which a given Module exists.
+// InternalContext is an LLM-provided textual description of the content that lives within a given Module.
+// PublicContext is an LLM-provided textual description of content that his Module exposes for other modules to use.
 type Annotation struct {
-	//ExternalContext is an LLM-provided textual description of the context in which a given Module exists.
 	ExternalContext string `yaml:"external-context"`
-	//InternalContext is an LLM-provided textual description of the content that lives within a given Module.
 	InternalContext string `yaml:"internal-context"`
-	//PublicContext is an LLM-provided textual description of content that his Module exposes for other modules to use.
-	PublicContext string `yaml:"public-context"`
+	PublicContext   string `yaml:"public-context"`
 }
+
+// simpleModuleContext is a minimal implementation of payload.ModuleContext
+// used exclusively for building the user message during annotation.
+type simpleModuleContext struct {
+	name string
+}
+
+func (s *simpleModuleContext) GetModuleName() string      { return s.name }
+func (s *simpleModuleContext) GetExternalContext() string { return "" }
+func (s *simpleModuleContext) GetInternalContext() string { return "" }
+func (s *simpleModuleContext) GetPublicContext() string   { return "" }
 
 // annotate navigates the modules graph, starting from the leaf-most
 // modules back to the root. For each module that has no Annotation, it calls
 // createAnnotation for it after all its submodules are annotated. The creation of
 // annotations is performed in parallel using goroutines.
-func annotate(metadata *Metadata) error {
+func annotate(metadata *Metadata, rootFS fs.FS) error {
 	if metadata == nil || metadata.Modules == nil {
 		return nil
 	}
@@ -97,17 +109,49 @@ func collectModulesInPostOrder(root *Module) []*Module {
 	return result
 }
 
-// createAnnotation calls OpenAI with the files contained in a given module, building a summary.
-func createAnnotation(m *Module) (Annotation, error) {
-	// Gather file paths from this module (including submodules).
-	filePaths := gatherModuleFilePaths(m)
-	if len(filePaths) == 0 {
-		// No files: nothing to summarize.
-		return Annotation{}, nil
+// buildModuleContextRequest converts a *Module hierarchy to a *payload.ModuleContextRequest tree.
+func buildModuleContextRequest(m *Module) *payload.ModuleContextRequest {
+	if m == nil {
+		return nil
 	}
 
-	// TODO(vyb): pass the right parameters to payload.BuildModuleContextUserMessage.
-	userMsg, _ := payload.BuildModuleContextUserMessage(nil, nil)
+	// Collect file paths relative to this module (just the file names).
+	var paths []string
+	for _, f := range m.Files {
+		paths = append(paths, f.Name)
+	}
+
+	// Recursively process sub-modules.
+	var subs []*payload.ModuleContextRequest
+	for _, sm := range m.Modules {
+		subs = append(subs, buildModuleContextRequest(sm))
+	}
+
+	// For the root module (name == ".") we omit the ModuleContext so we don’t get a "# ." header.
+	var ctxPtr *payload.ModuleContext
+	if m.Name != "." {
+		smc := &simpleModuleContext{name: m.Name}
+		var iface payload.ModuleContext = smc
+		ctxPtr = &iface
+	}
+
+	return &payload.ModuleContextRequest{
+		FilePaths:     paths,
+		ModuleContext: ctxPtr,
+		SubModules:    subs,
+	}
+}
+
+// createAnnotation calls OpenAI with the files contained in a given module, building a summary.
+func createAnnotation(m *Module) (Annotation, error) {
+	// Build the ModuleContextRequest tree starting from this module.
+	req := buildModuleContextRequest(m)
+
+	// Construct user message including the files for this module.
+	userMsg, err := payload.BuildModuleContextUserMessage(os.DirFS("."), req)
+	if err != nil {
+		return Annotation{}, fmt.Errorf("failed to build user message: %w", err)
+	}
 
 	// System prompt instructing the LLM to summarize code into JSON schema.
 	systemMessage := `You are a summarizer. Please read the following code and produce a short and long description in JSON.
@@ -120,7 +164,7 @@ Use "summary" for a one-liner, and "description" for a paragraph.`
 		return Annotation{}, fmt.Errorf("failed to call openAI: %w", err)
 	}
 
-	// Populate the Annotation: ExternalContext holds the paragraph (description), InternalContext holds the one-liner.
+	// Populate the Annotation.
 	ann := Annotation{
 		ExternalContext: context.GetExternalContext(),
 		InternalContext: context.GetInternalContext(),

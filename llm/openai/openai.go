@@ -186,9 +186,11 @@ func callOpenAI(systemMessage, userMessage string, structuredOutput schema.Struc
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
 
 	fmt.Printf("About to call OpenAI\n")
+	//fmt.Printf("User Message:\n%s\n\n", userMessage)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	fmt.Printf("Fininshed calling OpenAI\n")
+
 	if err != nil {
 		fmt.Printf("Got an error back %v\n", err)
 		return nil, err
@@ -216,5 +218,6 @@ func callOpenAI(systemMessage, userMessage string, structuredOutput schema.Struc
 		return nil, errors.New("no choices returned from OpenAI")
 	}
 
+	fmt.Printf("Response:\n%s\n\n", openaiResp.Choices[0].Message.Content)
 	return &openaiResp, nil
 }

@@ -17,6 +17,7 @@ import (
 func BuildTree(fsys fs.FS, pathEntries []string) (*Module, error) {
 	rootModule := &Module{
 		Name:    ".",
+		Path:    ".",
 		Modules: []*Module{},
 		Files:   []*FileRef{},
 	}
@@ -76,6 +77,7 @@ func buildFile(fsys fs.FS, path string) (*FileRef, error) {
 
 	return &FileRef{
 		Name:         filepath.Base(path),
+		Path:         path,
 		LastModified: info.ModTime(),
 		TokenCount:   int64(tCount),
 		MD5:          hash,
@@ -111,9 +113,15 @@ func navigateOrCreateModule(m *Module, parts []string) *Module {
 		}
 	}
 
+	path := chunk
+	if m.Path != "." {
+		path = filepath.Join(m.Path, chunk)
+	}
+
 	// create a new submodule
 	newSub := &Module{
 		Name:    chunk,
+		Path:    path,
 		Modules: []*Module{},
 		Files:   []*FileRef{},
 	}

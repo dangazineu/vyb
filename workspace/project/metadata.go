@@ -27,11 +27,13 @@ type Module struct {
 	Modules []*Module  `yaml:"modules"`
 	Files   []*FileRef `yaml:"files"`
 
+	Path       string      `yaml:"path"`
 	Annotation *Annotation `yaml:"annotation"`
 }
 
 type FileRef struct {
 	Name         string    `yaml:"name"`
+	Path         string    `yaml:"path"`
 	LastModified time.Time `yaml:"last_modified"`
 	TokenCount   int64     `yaml:"token_count"`
 	MD5          string    `yaml:"md5"`
@@ -51,7 +53,8 @@ var systemExclusionPatterns = []string{
 // this function returns an error.
 func Create(projectRoot string) error {
 
-	existingFolders, err := findAllConfigWithinRoot(os.DirFS(projectRoot))
+	rootFS := os.DirFS(projectRoot)
+	existingFolders, err := findAllConfigWithinRoot(rootFS)
 	if err != nil {
 		return err
 	}
@@ -64,15 +67,15 @@ func Create(projectRoot string) error {
 		return fmt.Errorf("failed to create .vyb directory: %w", err)
 	}
 
-	metadata, err := buildMetadata(os.DirFS(projectRoot))
+	metadata, err := buildMetadata(rootFS)
 	if err != nil {
 		return fmt.Errorf("failed to build metadata: %w", err)
 	}
 
-	err = annotate(metadata)
-	if err != nil {
-		return fmt.Errorf("failed to annotate metadata: %w", err)
-	}
+	//err = annotate(metadata, rootFS)
+	//if err != nil {
+	//	return fmt.Errorf("failed to annotate metadata: %w", err)
+	//}
 
 	data, err := yaml.Marshal(metadata)
 	if err != nil {

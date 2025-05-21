@@ -15,7 +15,7 @@
             },
             "external_context": {
               "type": "string",
-              "description": "Summary and information about parent and sibling modules that help contextualize the existence and purpose of this module. This is only present when the module has a parent."
+              "description": "Summary and information about parent and sibling modules that help contextualize the existence and purpose of this module. This is only present when the module has a parent. Otherwise, it's an empty string."
             },
             "internal_context": {
               "type": "string",
@@ -27,6 +27,8 @@
             }
           },
           "required": [
+            "name",
+            "external_context",
             "internal_context",
             "public_context"
           ],
