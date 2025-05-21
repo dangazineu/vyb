@@ -2,11 +2,9 @@ package project
 
 import (
 	"fmt"
-	"io/fs"
-	"os"
-
 	"github.com/dangazineu/vyb/llm/openai"
 	"github.com/dangazineu/vyb/llm/payload"
+	"io/fs"
 )
 
 // Annotation holds context and summary for a Module.
@@ -21,9 +19,9 @@ type Annotation struct {
 
 // annotate navigates the modules graph, starting from the leaf-most
 // modules back to the root. For each module that has no Annotation, it calls
-// createAnnotation for it after all its submodules are annotated. The creation of
+// annotateModule for it after all its submodules are annotated. The creation of
 // annotations is performed in parallel using goroutines.
-func annotate(metadata *Metadata, rootFS fs.FS) error {
+func annotate(metadata *Metadata, sysfs fs.FS) error {
 	if metadata == nil || metadata.Modules == nil {
 		return nil
 	}
@@ -55,15 +53,13 @@ func annotate(metadata *Metadata, rootFS fs.FS) error {
 			for _, sub := range mod.Modules {
 				<-dones[sub]
 			}
-			// Create annotation.
-			ann, err := createAnnotation(mod)
+			err := annotateModule(mod, sysfs)
 			if err != nil {
 				errCh <- fmt.Errorf("failed to create annotation for module %q: %w", mod.Name, err)
 				// Signal done to avoid blocking parents.
 				close(dones[mod])
 				return
 			}
-			mod.Annotation = &ann
 			close(dones[mod])
 		}(m)
 	}
@@ -129,15 +125,15 @@ func buildModuleContextRequest(m *Module) *payload.ModuleContextRequest {
 	}
 }
 
-// createAnnotation calls OpenAI with the files contained in a given module, building a summary.
-func createAnnotation(m *Module) (Annotation, error) {
+// annotateModule calls OpenAI with the files contained in a given module, building a summary.
+func annotateModule(m *Module, sysfs fs.FS) error {
 	// Build the ModuleContextRequest tree starting from this module.
 	req := buildModuleContextRequest(m)
 
 	// Construct user message including the files for this module.
-	userMsg, err := payload.BuildModuleContextUserMessage(os.DirFS("."), req)
+	userMsg, err := payload.BuildModuleContextUserMessage(sysfs, req)
 	if err != nil {
-		return Annotation{}, fmt.Errorf("failed to build user message: %w", err)
+		return fmt.Errorf("failed to build user message: %w", err)
 	}
 
 	// System prompt instructing the LLM to summarize code into JSON schema.
@@ -148,14 +144,10 @@ Use "summary" for a one-liner, and "description" for a paragraph.`
 	// Call OpenAI to get the workspace change proposal containing summary and description.
 	context, err := openai.GetModuleContext(systemMessage, userMsg)
 	if err != nil {
-		return Annotation{}, fmt.Errorf("failed to call openAI: %w", err)
+		return fmt.Errorf("failed to call openAI: %w", err)
 	}
 
-	// Populate the Annotation.
-	ann := Annotation{
-		ExternalContext: context.GetExternalContext(),
-		InternalContext: context.GetInternalContext(),
-		PublicContext:   context.GetPublicContext(),
-	}
-	return ann, nil
+	// TODO(vyb): for every payload.ModuleContext in the context variable, find the corresponding module within m (including m itself) and replace their current annotation with what was provided by the LLM.
+
+	return nil
 }

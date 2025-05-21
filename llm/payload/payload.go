@@ -87,6 +87,10 @@ type ModuleContextRequest struct {
 	SubModules []*ModuleContextRequest
 }
 
+type ModuleContextResponse struct {
+	Modules []ModuleContext `json:"modules"`
+}
+
 // BuildModuleContextUserMessage constructs a Markdown-formatted string that
 // includes the content of all files referenced by the provided
 // ModuleContextRequest tree.  `projectRoot` is expected to be an fs.FS rooted
