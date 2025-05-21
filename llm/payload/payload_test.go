@@ -5,26 +5,10 @@ import (
     "testing/fstest"
 )
 
-// dummyModuleContext is a lightweight implementation of the ModuleContext
-// interface that we can use for tests.
-// Only the module name is relevant for our current tests, all other
-// methods return an empty string.
-type dummyModuleContext struct {
-    name string
+func context(name string) *ModuleContext {
+    return &ModuleContext{Name: name}
 }
-
-func (d dummyModuleContext) GetModuleName() string      { return d.name }
-func (d dummyModuleContext) GetExternalContext() string { return "" }
-func (d dummyModuleContext) GetInternalContext() string { return "" }
-func (d dummyModuleContext) GetPublicContext() string   { return "" }
-
-func context(name string) ModuleContext {
-    return &dummyModuleContext{name: name}
-}
-func pcontext(name string) *ModuleContext {
-    ctx := context(name)
-    return &ctx
-}
+func pcontext(name string) *ModuleContext { return context(name) }
 
 func TestBuildModuleContextUserMessage(t *testing.T) {
     // Files arranged in a nested module hierarchy:
@@ -42,12 +26,12 @@ func TestBuildModuleContextUserMessage(t *testing.T) {
         FilePaths: []string{"root.txt"},
         SubModules: []*ModuleContextRequest{
             {
-                ModuleContext: pcontext("moduleA"),
-                FilePaths:     []string{"a.go"},
+                ModuleCtx: pcontext("moduleA"),
+                FilePaths: []string{"a.go"},
                 SubModules: []*ModuleContextRequest{
                     {
-                        ModuleContext: pcontext("subB"),
-                        FilePaths:     []string{"b.md"},
+                        ModuleCtx: pcontext("subB"),
+                        FilePaths: []string{"b.md"},
                     },
                 },
             },

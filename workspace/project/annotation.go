@@ -19,17 +19,6 @@ type Annotation struct {
 	PublicContext   string `yaml:"public-context"`
 }
 
-// simpleModuleContext is a minimal implementation of payload.ModuleContext
-// used exclusively for building the user message during annotation.
-type simpleModuleContext struct {
-	name string
-}
-
-func (s *simpleModuleContext) GetModuleName() string      { return s.name }
-func (s *simpleModuleContext) GetExternalContext() string { return "" }
-func (s *simpleModuleContext) GetInternalContext() string { return "" }
-func (s *simpleModuleContext) GetPublicContext() string   { return "" }
-
 // annotate navigates the modules graph, starting from the leaf-most
 // modules back to the root. For each module that has no Annotation, it calls
 // createAnnotation for it after all its submodules are annotated. The creation of
@@ -130,15 +119,13 @@ func buildModuleContextRequest(m *Module) *payload.ModuleContextRequest {
 	// For the root module (name == ".") we omit the ModuleContext so we don’t get a "# ." header.
 	var ctxPtr *payload.ModuleContext
 	if m.Name != "." {
-		smc := &simpleModuleContext{name: m.Name}
-		var iface payload.ModuleContext = smc
-		ctxPtr = &iface
+		ctxPtr = &payload.ModuleContext{Name: m.Name}
 	}
 
 	return &payload.ModuleContextRequest{
-		FilePaths:     paths,
-		ModuleContext: ctxPtr,
-		SubModules:    subs,
+		FilePaths:  paths,
+		ModuleCtx:  ctxPtr,
+		SubModules: subs,
 	}
 }
 
@@ -171,30 +158,4 @@ Use "summary" for a one-liner, and "description" for a paragraph.`
 		PublicContext:   context.GetPublicContext(),
 	}
 	return ann, nil
-}
-
-// gatherModuleFilePaths recursively visits the module and its children, collecting the relative paths.
-func gatherModuleFilePaths(m *Module) []string {
-	var results []string
-	var walk func(mod *Module, prefix string)
-
-	walk = func(mod *Module, prefix string) {
-		for _, f := range mod.Files {
-			results = append(results, joinPath(prefix, f.Name))
-		}
-		for _, sub := range mod.Modules {
-			newPrefix := joinPath(prefix, sub.Name)
-			walk(sub, newPrefix)
-		}
-	}
-
-	walk(m, m.Name)
-	return results
-}
-
-func joinPath(prefix, name string) string {
-	if prefix == "." || prefix == "" {
-		return name
-	}
-	return prefix + string(os.PathSeparator) + name
 }
