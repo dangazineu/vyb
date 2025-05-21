@@ -114,17 +114,17 @@ func Test_buildMetadata(t *testing.T) {
 					Name: "folderA",
 					Modules: []*Module{
 						{
-							Name: "folderB",
+							Name: "folderA/folderB",
 							Files: []*FileRef{
 								{
-									Name: "file2.md",
+									Name: "folderA/folderB/file2.md",
 								},
 							},
 						},
 					},
 					Files: []*FileRef{
 						{
-							Name: "file1.txt",
+							Name: "folderA/file1.txt",
 						},
 					},
 				},
@@ -132,7 +132,7 @@ func Test_buildMetadata(t *testing.T) {
 					Name: "folderC",
 					Files: []*FileRef{
 						{
-							Name: "foo.go",
+							Name: "folderC/foo.go",
 						},
 					},
 				},

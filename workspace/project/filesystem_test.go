@@ -102,17 +102,17 @@ func TestBuildTree(t *testing.T) {
 				Type: Folder,
 				Children: []*testNode{
 					{
-						Name: "dir2",
+						Name: "dir1/dir2",
 						Type: Folder,
 						Children: []*testNode{
 							{
-								Name: "file2.go",
+								Name: "dir1/dir2/file2.go",
 								Type: F1le,
 							},
 						},
 					},
 					{
-						Name: "file1.txt",
+						Name: "dir1/file1.txt",
 						Type: F1le,
 					},
 				},
@@ -122,21 +122,21 @@ func TestBuildTree(t *testing.T) {
 				Type: Folder,
 				Children: []*testNode{
 					{
-						Name: "dir4/dir5",
+						Name: "dir3/dir4/dir5",
 						Type: Folder,
 						Children: []*testNode{
 							{
-								Name: "file3.txt",
+								Name: "dir3/dir4/dir5/file3.txt",
 								Type: F1le,
 							},
 							{
-								Name: "file4.txt",
+								Name: "dir3/dir4/dir5/file4.txt",
 								Type: F1le,
 							},
 						},
 					},
 					{
-						Name: "file5.md",
+						Name: "dir3/file5.md",
 						Type: F1le,
 					},
 				},
