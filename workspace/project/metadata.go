@@ -30,6 +30,21 @@ type Module struct {
 	Modules    []*Module   `yaml:"modules"`
 	Files      []*FileRef  `yaml:"files"`
 	Annotation *Annotation `yaml:"annotation,omitempty"`
+	tokenCount *int64      `yaml:"-"`
+}
+
+func (m *Module) TokenCount() int64 {
+	if m.tokenCount == nil {
+		var count int64
+		for _, file := range m.Files {
+			count += file.TokenCount
+		}
+		for _, mod := range m.Modules {
+			count += mod.TokenCount()
+		}
+		m.tokenCount = &count
+	}
+	return *m.tokenCount
 }
 
 type FileRef struct {

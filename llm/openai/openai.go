@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 )
 
 // message represents a single message in the chat conversation.
@@ -37,10 +38,32 @@ type openaiResponse struct {
 	} `json:"choices"`
 }
 
+type openaiErrorResponse struct {
+	OpenAIError struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+		Param   string `json:"param"`
+		Code    string `json:"code"`
+	} `json:"error"`
+}
+
+func (o openaiErrorResponse) Error() string {
+	return fmt.Sprintf("OpenAI API error: %s", o.OpenAIError.Message)
+}
+
 // GetModuleContext calls the LLM and returns a parsed ModuleContext value.
 func GetModuleContext(systemMessage, userMessage string) (*payload.ModuleContextResponse, error) {
+	//"gpt-4.1-nano"
 	openaiResp, err := callOpenAI(systemMessage, userMessage, schema.GetModuleContextSchema(), "o4-mini")
 	if err != nil {
+		var openAIErrResp openaiErrorResponse
+		if errors.As(err, &openAIErrResp) {
+			if openAIErrResp.OpenAIError.Code == "rate_limit_exceeded" {
+				fmt.Printf("Rate limit exceeded, retrying after 30s\n")
+				<-time.After(30 * time.Second)
+				return GetModuleContext(systemMessage, userMessage)
+			}
+		}
 		return nil, err
 	}
 	var ctx payload.ModuleContextResponse
@@ -53,7 +76,6 @@ func GetModuleContext(systemMessage, userMessage string) (*payload.ModuleContext
 // GetWorkspaceChangeProposals sends the given messages to the OpenAI API and
 // returns the structured workspace change proposal.
 func GetWorkspaceChangeProposals(systemMessage, userMessage string) (*payload.WorkspaceChangeProposal, error) {
-	// as of May 2025, using "o3" model requires verifying your ID with OpenAI.
 	model := "o3"
 
 	openaiResp, err := callOpenAI(systemMessage, userMessage, schema.GetWorkspaceChangeProposalSchema(), model)
@@ -118,8 +140,14 @@ func callOpenAI(systemMessage, userMessage string, structuredOutput schema.Struc
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		fmt.Printf("Response code %d, aborting\nOpenAI API error: %s\n", resp.StatusCode, string(bodyBytes))
-		return nil, fmt.Errorf("OpenAI API error: %s", string(bodyBytes))
+
+		var errorResp openaiErrorResponse
+		if err := json.Unmarshal(bodyBytes, &errorResp); err != nil {
+			fmt.Printf("Response code %d, aborting\nOpenAI API error: %s\n", resp.StatusCode, string(bodyBytes))
+			return nil, fmt.Errorf("OpenAI API error: %s", string(bodyBytes))
+		}
+
+		return nil, errorResp
 	}
 
 	respBytes, err := io.ReadAll(resp.Body)
