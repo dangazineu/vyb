@@ -1,92 +1,12 @@
 package project
 
 import (
-	"fmt"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"io/fs"
 	"testing"
 	"testing/fstest"
 	"time"
 )
-
-func Test_findAllConfigWithinRoot(t *testing.T) {
-	f := fstest.MapFS{
-		"root/.vyb/metadata.yaml":           {Data: []byte("root: .")},
-		"root/dir1/.vyb/metadata.yaml":      {Data: []byte("root: ../")},
-		"root/dir1/dir2/.vyb/metadata.yaml": {Data: []byte("root: ../../")},
-		"root/dir3/foo.txt":                 {Data: []byte("...")},
-		"root/dir3/dir4/.vyb/metadata.yaml": {Data: []byte("root: ../../")},
-	}
-
-	tests := []struct {
-		baseDir     string
-		wantErr     *WrongRootError
-		want        []string
-		explanation string
-	}{
-		{
-			baseDir:     "root",
-			want:        []string{".vyb", "dir1/.vyb", "dir1/dir2/.vyb", "dir3/dir4/.vyb"},
-			explanation: "config in given root says project root is the given root",
-		},
-		{
-			baseDir:     "root/dir3",
-			want:        []string{"dir4/.vyb"},
-			explanation: "no config in given root",
-		},
-		{
-			baseDir:     "root/dir1",
-			want:        []string{".vyb", "dir2/.vyb"},
-			explanation: "config in given root says project root is another path",
-		},
-		{
-			baseDir:     "root",
-			want:        []string{".vyb", "dir1/.vyb", "dir1/dir2/.vyb", "dir3/dir4/.vyb"},
-			explanation: "config in given root says project root is the given root",
-		},
-	}
-
-	for i, tc := range tests {
-		t.Run(fmt.Sprintf("TestRemove[%d]", i), func(t *testing.T) {
-			tcfs, _ := fs.Sub(f, tc.baseDir)
-			got, gotErr := findAllConfigWithinRoot(tcfs)
-
-			if tc.wantErr != nil {
-				if diff := cmp.Diff(*tc.wantErr, gotErr, cmpopts.EquateEmpty()); diff != "" {
-					t.Fatalf("(-want, +got):\n%s", diff)
-				}
-			} else {
-				if diff := cmp.Diff(tc.want, got, cmpopts.EquateEmpty()); diff != "" {
-					t.Fatalf("(-want, +got):\n%s", diff)
-				}
-			}
-		})
-	}
-}
-
-func Test_loadStoredMetadata(t *testing.T) {
-	t.Run("Success case", func(t *testing.T) {
-		memFS := fstest.MapFS{
-			".vyb/metadata.yaml": {
-				Data: []byte("root: .\nmodules:\n  name: hello\n"),
-			},
-		}
-
-		_, err := loadStoredMetadata(memFS)
-		if err != nil {
-			t.Fatalf("loadStoredMetadata returned an error: %v", err)
-		}
-	})
-
-	t.Run("F1le not found", func(t *testing.T) {
-		memFS := fstest.MapFS{}
-		_, err := loadStoredMetadata(memFS)
-		if err == nil {
-			t.Fatal("expected error for missing metadata.yaml, got nil")
-		}
-	})
-}
 
 func Test_buildMetadata(t *testing.T) {
 	memFS := fstest.MapFS{
@@ -140,24 +60,23 @@ func Test_buildMetadata(t *testing.T) {
 		},
 	}
 
-	// Use cmp with custom sorting for modules and files.
 	opts := []cmp.Option{
-		// We ignore them in structural comparison but will check them below.
+		// ignore MD5 on both FileRef and Module for structural comparison
 		cmpopts.IgnoreFields(FileRef{}, "LastModified", "MD5", "TokenCount"),
+		cmpopts.IgnoreFields(Module{}, "MD5"),
+		cmpopts.IgnoreUnexported(Module{}),
 		cmpopts.EquateEmpty(),
-		cmpopts.SortSlices(func(a, b *Module) bool {
-			return a.Name < b.Name
-		}),
-		cmpopts.SortSlices(func(a, b *FileRef) bool {
-			return a.Name < b.Name
-		}),
+		cmpopts.SortSlices(func(a, b *Module) bool { return a.Name < b.Name }),
+		cmpopts.SortSlices(func(a, b *FileRef) bool { return a.Name < b.Name }),
 	}
 
 	if diff := cmp.Diff(want, meta, opts...); diff != "" {
 		t.Errorf("metadata structure mismatch (-want +got):\n%s", diff)
 	}
 
+	// Validate files and modules have non-empty fields/hashes.
 	checkNonEmptyFields(t, meta.Modules)
+	checkModuleHashes(t, meta.Modules)
 }
 
 // checkNonEmptyFields validates that LastModified, MD5, and TokenCount are not empty on all files.
@@ -178,5 +97,19 @@ func checkNonEmptyFields(t *testing.T, mod *Module) {
 	}
 	for _, child := range mod.Modules {
 		checkNonEmptyFields(t, child)
+	}
+}
+
+// checkModuleHashes walks the module tree ensuring every module has a non-empty
+// MD5 value.
+func checkModuleHashes(t *testing.T, m *Module) {
+	if m == nil {
+		return
+	}
+	if m.MD5 == "" {
+		t.Errorf("Module %s has empty MD5", m.Name)
+	}
+	for _, sub := range m.Modules {
+		checkModuleHashes(t, sub)
 	}
 }

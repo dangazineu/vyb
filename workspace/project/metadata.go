@@ -1,11 +1,14 @@
 package project
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -20,17 +23,58 @@ type Metadata struct {
 	Modules *Module `yaml:"modules"`
 }
 
+func newModule(name string, modules []*Module, files []*FileRef, annotation *Annotation) *Module {
+	m := &Module{
+		Name:        name,
+		Modules:     modules,
+		Files:       files,
+		Annotation:  annotation,
+		tokenCount:  &tokenCount,
+		MD5:         md5,
+		childrenMD5: computeHashFromChildren(modules, files),
+	}
+
+}
+
 // Module represents a hierarchical grouping of information within a vyb
 // project structure.
-//
-// Name now stores the *full* relative path of the module from the workspace
-// root – e.g. "dirA/dirB".  The root module has Name equal to ".".
 type Module struct {
-	Name       string      `yaml:"name"`
-	Modules    []*Module   `yaml:"modules"`
-	Files      []*FileRef  `yaml:"files"`
-	Annotation *Annotation `yaml:"annotation,omitempty"`
-	tokenCount *int64      `yaml:"-"`
+	// Name stores the *full* relative path of the module from the workspace
+	// root – e.g. "dirA/dirB".  The root module has Name equal to ".".
+	Name        string      `yaml:"name"`
+	Modules     []*Module   `yaml:"modules"`
+	Files       []*FileRef  `yaml:"files"`
+	Annotation  *Annotation `yaml:"annotation,omitempty"`
+	tokenCount  *int64      `yaml:"-"`
+	MD5         string      `yaml:"md5"`
+	childrenMD5 string      `yaml:"-"`
+}
+
+//func (m *Module) update() {
+//	for _, mod := range m.Modules {
+//		mod.update()
+//	}
+//	m.childrenMD5 = computeHashFromChildren(m.Modules, m.Files)
+//
+//
+//}
+
+func (m *Module) NeedsAnnotationUpdate() bool {
+	for _, mod := range m.Modules {
+		if mod.NeedsAnnotationUpdate() {
+			return true
+		}
+	}
+	if m.childrenMD5 != computeHashFromChildren(m.Modules, m.Files) {
+		return true
+	}
+	if m.Annotation == nil {
+		return true
+	}
+	if m.MD5 != computeHashFromBytes([]byte(m.Annotation.PublicContext)) {
+		return true
+	}
+	return false
 }
 
 func (m *Module) TokenCount() int64 {
@@ -47,12 +91,50 @@ func (m *Module) TokenCount() int64 {
 	return *m.tokenCount
 }
 
+func computeTokenCountFromChildren(modules []*Module, files []*FileRef) int64 {
+	var count int64
+	for _, m := range modules {
+		count += m.tokenCount
+	}
+	for _, f := range files {
+		count += f.TokenCount
+	}
+	return count
+}
+
+func computeHashFromChildren(modules []*Module, files []*FileRef) string {
+	var hashes []string
+	for _, m := range modules {
+		hashes = append(hashes, m.MD5)
+	}
+	for _, f := range files {
+		hashes = append(hashes, f.MD5)
+	}
+	// Ensure deterministic output.
+	sort.Strings(hashes)
+	return computeHashFromBytes([]byte(strings.Join(hashes, "")))
+}
+
+func computeHashFromBytes(bytes []byte) string {
+	h := md5.Sum(bytes)
+	return hex.EncodeToString(h[:])
+}
+
 type FileRef struct {
 	// Name holds the full relative path to the file from the workspace root.
 	Name         string    `yaml:"name"`
 	LastModified time.Time `yaml:"last_modified"`
 	TokenCount   int64     `yaml:"token_count"`
 	MD5          string    `yaml:"md5"`
+}
+
+func newFileRef(name string, lastModified time.Time, tokenCount int64, md5 string) *FileRef {
+	return &FileRef{
+		Name:         name,
+		LastModified: lastModified,
+		TokenCount:   tokenCount,
+		MD5:          md5,
+	}
 }
 
 var systemExclusionPatterns = []string{
