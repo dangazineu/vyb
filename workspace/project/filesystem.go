@@ -80,6 +80,11 @@ func collapseByTokens(m *Module) {
 		collapseByTokens(child)
 	}
 
+	// Don't collapse the root module.
+	if m.Name == "." {
+		return
+	}
+
 	// Iterate over children and merge the small ones.
 	for i := 0; i < len(m.Modules); {
 		child := m.Modules[i]
