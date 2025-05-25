@@ -12,50 +12,150 @@ import (
 	"github.com/tiktoken-go/tokenizer"
 )
 
-// TODO(vyb): THIS IS THE HIGHEST PRIORITY TASK: Change the BuildTree logic so modules are always created using the newModule function, and only when all FileRef in a given module and its submodules are known. The TokenCount for a Module should be at least 1000, and at most 100000. If the token count in a Module is less than 1000, the module should be collapsed with its siblings and parents (unless that would cause the TokenCount to be more than 100000, in that case modules with fewer than the minimum token counts are allowed). If a single folder has more than 100000 TokenCount, return an error. Make sure TokenCount for Modules only includes the count for the FileRefs directly within the module, and not the submodules.
-
 // BuildTree constructs a hierarchy of Modules and Files for the given path entries.
 // It returns the Module representing the root folder.
 func BuildTree(fsys fs.FS, pathEntries []string) (*Module, error) {
-	rootModule := &Module{
-		Name:    ".",
-		Modules: []*Module{},
-		Files:   []*FileRef{},
-	}
+	// STEP 1: create a basic tree with empty token information so we can easily
+	// attach files to the correct folder hierarchy.
+	root := &Module{Name: ".", Modules: []*Module{}, Files: []*FileRef{}}
 
 	for _, entry := range pathEntries {
 		if entry == "" {
 			continue
 		}
-
 		info, err := fs.Stat(fsys, entry)
 		if err != nil {
 			return nil, fmt.Errorf("failed to stat path %q: %w", entry, err)
 		}
-
-		relPath, err := filepath.Rel(".", entry)
-		if err != nil {
-			return nil, err
-		}
-
-		// Skip directories in the provided path list.
+		// Ignore directories from the incoming list – we only care about files.
 		if info.IsDir() {
 			continue
 		}
 
-		fileObj, err := newFileRefFromFS(fsys, relPath)
+		fileRef, err := newFileRefFromFS(fsys, entry)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build file object for %s: %w", entry, err)
 		}
 
-		parentModule := findOrCreateParentModule(rootModule, relPath)
-		parentModule.Files = append(parentModule.Files, fileObj)
+		parent := findOrCreateParentModule(root, entry)
+		parent.Files = append(parent.Files, fileRef)
 	}
 
-	collapseModules(rootModule)
+	// Collapse trivial single-child folders first (this keeps behaviour of the
+	// previous implementation and reduces noise before token collapsing).
+	collapseModules(root)
 
-	return rootModule, nil
+	// STEP 2: collapse by token thresholds (<1k) bottom-up.
+	if err := collapseByTokens(root); err != nil {
+		return nil, err
+	}
+
+	// STEP 3: rebuild the tree **exclusively** via newModule so token counts and
+	// hashes are populated correctly and only when full information is known.
+	rebuilt := rebuildWithNewModule(root)
+
+	// STEP 4: final validation – no folder allowed above the 100k token cap.
+	if err := validateTokenLimits(rebuilt); err != nil {
+		return nil, err
+	}
+
+	return rebuilt, nil
 }
+
+// -------------------- internal helpers --------------------
+
+// collapseByTokens walks the tree bottom-up, merging children whose cumulative
+// token counts are < 1000 into their parent when this does not push the
+// parent direct token count above 100000.
+//
+// The function mutates the provided module tree.
+func collapseByTokens(m *Module) error {
+	// Recurse first so children are already processed.
+	for _, child := range m.Modules {
+		if err := collapseByTokens(child); err != nil {
+			return err
+		}
+	}
+
+	// Iterate over children and merge the small ones.
+	for i := 0; i < len(m.Modules); {
+		child := m.Modules[i]
+		totalChild := cumulativeTokens(child)
+		if totalChild < 1000 {
+			// Can we merge? Check direct token limit for parent.
+			if directTokens(m)+directTokens(child) <= 100000 {
+				// Adopt child's files.
+				m.Files = append(m.Files, child.Files...)
+				// Remove child and adopt its sub-modules.
+				m.Modules = append(m.Modules[:i], m.Modules[i+1:]...)
+				m.Modules = append(m.Modules, child.Modules...)
+				// Do NOT advance i – re-evaluate new item in same index.
+				continue
+			}
+		}
+		i++
+	}
+	return nil
+}
+
+// rebuildWithNewModule converts a pre-existing *Module hierarchy into a new
+// tree where each node is produced via newModule so token counts and hashes
+// are accurate.
+func rebuildWithNewModule(old *Module) *Module {
+	if old == nil {
+		return nil
+	}
+	// Convert children first.
+	var children []*Module
+	for _, c := range old.Modules {
+		children = append(children, rebuildWithNewModule(c))
+	}
+	return newModule(old.Name, children, old.Files, old.Annotation)
+}
+
+// validateTokenLimits ensures no folder (considering the cumulative tokens of
+// files inside it and all descendants) exceeds 100000.
+func validateTokenLimits(m *Module) error {
+	if m == nil {
+		return nil
+	}
+	if cumulativeTokens(m) > 100000 {
+		return fmt.Errorf("folder %s exceeds 100000 token limit", m.Name)
+	}
+	for _, c := range m.Modules {
+		if err := validateTokenLimits(c); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// cumulativeTokens returns the sum of direct file tokens in this module plus
+// the cumulative tokens of all descendants.
+func cumulativeTokens(m *Module) int64 {
+	if m == nil {
+		return 0
+	}
+	total := directTokens(m)
+	for _, c := range m.Modules {
+		total += cumulativeTokens(c)
+	}
+	return total
+}
+
+// directTokens returns the token count of files directly inside the module.
+func directTokens(m *Module) int64 {
+	if m == nil {
+		return 0
+	}
+	var t int64
+	for _, f := range m.Files {
+		t += f.TokenCount
+	}
+	return t
+}
+
+// ---------------- existing helpers (unchanged) ----------------
 
 // newFileRefFromFS creates a *project.FileRef with computed last-modified time, token count, and MD5.
 func newFileRefFromFS(fsys fs.FS, relPath string) (*FileRef, error) {

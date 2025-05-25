@@ -24,16 +24,16 @@ type Metadata struct {
 }
 
 func newModule(name string, modules []*Module, files []*FileRef, annotation *Annotation) *Module {
-	m := &Module{
-		Name:        name,
-		Modules:     modules,
-		Files:       files,
-		Annotation:  annotation,
-		tokenCount:  &tokenCount,
-		MD5:         md5,
-		childrenMD5: computeHashFromChildren(modules, files),
+	return &Module{
+		Name:            name,
+		Modules:         modules,
+		Files:           files,
+		Annotation:      annotation,
+		MD5:             computeHashFromAnnotation(annotation), // Annotation MD5 filled later when annotation exists.
+		childrenMD5:     computeHashFromChildren(modules, files),
+		localTokenCount: computeTokenCountFromChildren(nil, files),
+		TokenCount:      computeTokenCountFromChildren(modules, files),
 	}
-
 }
 
 // Module represents a hierarchical grouping of information within a vyb
@@ -41,13 +41,14 @@ func newModule(name string, modules []*Module, files []*FileRef, annotation *Ann
 type Module struct {
 	// Name stores the *full* relative path of the module from the workspace
 	// root – e.g. "dirA/dirB".  The root module has Name equal to ".".
-	Name        string      `yaml:"name"`
-	Modules     []*Module   `yaml:"modules"`
-	Files       []*FileRef  `yaml:"files"`
-	Annotation  *Annotation `yaml:"annotation,omitempty"`
-	tokenCount  *int64      `yaml:"-"`
-	MD5         string      `yaml:"md5"`
-	childrenMD5 string      `yaml:"-"`
+	Name            string      `yaml:"name"`
+	Modules         []*Module   `yaml:"modules"`
+	Files           []*FileRef  `yaml:"files"`
+	Annotation      *Annotation `yaml:"annotation,omitempty"`
+	TokenCount      int64       `yaml:"token_count"`
+	MD5             string      `yaml:"md5"`
+	childrenMD5     string      `yaml:"-"`
+	localTokenCount int64       `yaml:"-"`
 }
 
 //func (m *Module) update() {
@@ -77,24 +78,21 @@ func (m *Module) NeedsAnnotationUpdate() bool {
 	return false
 }
 
-func (m *Module) TokenCount() int64 {
-	if m.tokenCount == nil {
-		var count int64
-		for _, file := range m.Files {
-			count += file.TokenCount
-		}
-		for _, mod := range m.Modules {
-			count += mod.TokenCount()
-		}
-		m.tokenCount = &count
-	}
-	return *m.tokenCount
-}
+//func (m *Module) TokenCount() int64 {
+//	if m.localTokenCount == nil {
+//		var cnt int64
+//		for _, file := range m.Files {
+//			cnt += file.TokenCount
+//		}
+//		m.localTokenCount = &cnt
+//	}
+//	return *m.localTokenCount
+//}
 
 func computeTokenCountFromChildren(modules []*Module, files []*FileRef) int64 {
 	var count int64
 	for _, m := range modules {
-		count += m.tokenCount
+		count += m.TokenCount
 	}
 	for _, f := range files {
 		count += f.TokenCount
@@ -110,9 +108,17 @@ func computeHashFromChildren(modules []*Module, files []*FileRef) string {
 	for _, f := range files {
 		hashes = append(hashes, f.MD5)
 	}
-	// Ensure deterministic output.
 	sort.Strings(hashes)
 	return computeHashFromBytes([]byte(strings.Join(hashes, "")))
+}
+
+var emptyHash = computeHashFromBytes([]byte(""))
+
+func computeHashFromAnnotation(annotation *Annotation) string {
+	if annotation == nil {
+		return emptyHash
+	}
+	return computeHashFromBytes([]byte(annotation.PublicContext))
 }
 
 func computeHashFromBytes(bytes []byte) string {
