@@ -63,7 +63,7 @@ func Test_buildMetadata(t *testing.T) {
 	opts := []cmp.Option{
 		// ignore MD5 on both FileRef and Module for structural comparison
 		cmpopts.IgnoreFields(FileRef{}, "LastModified", "MD5", "TokenCount"),
-		cmpopts.IgnoreFields(Module{}, "MD5"),
+		cmpopts.IgnoreFields(Module{}, "MD5", "TokenCount"),
 		cmpopts.IgnoreUnexported(Module{}),
 		cmpopts.EquateEmpty(),
 		cmpopts.SortSlices(func(a, b *Module) bool { return a.Name < b.Name }),

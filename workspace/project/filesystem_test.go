@@ -54,6 +54,7 @@ func totalTokenCount(m *Module) int {
 	return sum
 }
 
+// TODO(vyb): Fix this test as it isn't taking into consideration the logic in collapseByTokens
 func TestBuildTree(t *testing.T) {
 	memFS := fstest.MapFS{
 		"dir1/file1.txt":           {Data: []byte("test file 1")},
