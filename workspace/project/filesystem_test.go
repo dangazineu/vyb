@@ -20,7 +20,7 @@ func TestBuildTree(t *testing.T) {
 		"dir3/file6.md":            {Data: []byte("not included in the list of paths")},
 	}
 
-	rm, err := BuildTree(memFS, []string{
+	rm, err := buildModuleFromFS(memFS, []string{
 		"dir1/file1.txt",
 		"dir1/dir2/file2.go",
 		"dir3/dir4/dir5/file3.txt",
@@ -104,7 +104,7 @@ func TestCollapseSingleChildFolders(t *testing.T) {
 		"dirA/dirB/ignored.txt":    {Data: []byte("this file is ignored and should not be included in the final data structure")},
 	}
 
-	rm, err := BuildTree(dirLayout, []string{"dirA/dirB/dirC/fileA.txt"})
+	rm, err := buildModuleFromFS(dirLayout, []string{"dirA/dirB/dirC/fileA.txt"})
 	if err != nil {
 		t.Fatalf("unexpected error building tree: %v", err)
 	}

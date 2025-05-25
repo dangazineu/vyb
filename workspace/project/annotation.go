@@ -140,7 +140,7 @@ func annotateModule(m *Module, sysfs fs.FS) error {
 	systemMessage := `You are a prompt engineer, structuring information about an application's code base 
 so context can be provided to an LLM in the most efficient way. 
 The user message contains information about one or more modules in the application.
-A module is a folder that has at least one file, or at least two modules within it. 
+A module is a folder with files, and possibly other folders within it. 
 
 Module information includes:
 
@@ -158,6 +158,8 @@ This should encapsulate not only the contents of the module, but the contents of
 This is used when the LLM prompt is constructed from a module outside of the hierarchy of this given module.
 The "Public Context" can include snippets of interfaces, script parameters, 
 or any useful information for the LLM to understand the module.
+
+Each type of context should be as descriptive as possible, using around one thousand LLM tokens, each.
 
 When reviewing this information, you may see modules that only have context, but no file contents, 
 and modules that only have file contents but no context. That is because you are building context iteratively, 

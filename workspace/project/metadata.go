@@ -202,7 +202,7 @@ func buildMetadata(fsys fs.FS) (*Metadata, error) {
 		return nil, fmt.Errorf("failed during file selection: %w", err)
 	}
 
-	rootModule, err := BuildTree(fsys, selected)
+	rootModule, err := buildModuleFromFS(fsys, selected)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build summary module tree: %w", err)
 	}
@@ -298,4 +298,61 @@ func findAllConfigWithinRoot(projectRoot fs.FS) ([]string, error) {
 	}
 	sort.Strings(matches)
 	return matches, nil
+}
+
+// -------------------- internal helpers --------------------
+
+var minTokenCountPerModule int64 = 10000
+var maxTokenCountPerModule int64 = 100000
+
+// collapseByTokens walks the tree bottom-up, merging children whose cumulative
+// token counts are < minTokenCountPerModule into their parent when this does not push the
+// parent direct token count above maxTokenCountPerModule.
+//
+// The function mutates the provided module tree.
+func collapseByTokens(m *Module) {
+	// Recurse first so children are already processed.
+	for _, child := range m.Modules {
+		collapseByTokens(child)
+	}
+
+	// Don't collapse the root module.
+	if m.Name == "." {
+		return
+	}
+
+	// Iterate over children and merge the small ones.
+	for i := 0; i < len(m.Modules); {
+		child := m.Modules[i]
+
+		if child.localTokenCount < minTokenCountPerModule {
+			// Can we merge? Check direct token limit for parent.
+			if m.localTokenCount+child.localTokenCount <= maxTokenCountPerModule {
+				// Adopt child's files.
+				m.Files = append(m.Files, child.Files...)
+				// Remove child and adopt its sub-modules.
+				m.Modules = append(m.Modules[:i], m.Modules[i+1:]...)
+				m.Modules = append(m.Modules, child.Modules...)
+				m.localTokenCount += child.localTokenCount
+				// Do NOT advance i – re-evaluate new item in same index.
+				continue
+			}
+		}
+		i++
+	}
+}
+
+// rebuildModule converts a pre-existing *Module hierarchy into a new
+// tree where each node is produced via newModule so token counts and hashes
+// are accurate.
+func rebuildModule(old *Module) *Module {
+	if old == nil {
+		return nil
+	}
+	// Convert children first.
+	var children []*Module
+	for _, c := range old.Modules {
+		children = append(children, rebuildModule(c))
+	}
+	return newModule(old.Name, children, old.Files, old.Annotation)
 }
