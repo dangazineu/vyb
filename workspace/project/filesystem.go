@@ -12,6 +12,8 @@ import (
 	"github.com/tiktoken-go/tokenizer"
 )
 
+// TODO(vyb): THIS IS THE HIGHEST PRIORITY TASK: Change the BuildTree logic so modules are always created using the newModule function, and only when all FileRef in a given module and its submodules are known. The TokenCount for a Module should be at least 1000, and at most 100000. If the token count in a Module is less than 1000, the module should be collapsed with its siblings and parents (unless that would cause the TokenCount to be more than 100000, in that case modules with fewer than the minimum token counts are allowed). If a single folder has more than 100000 TokenCount, return an error. Make sure TokenCount for Modules only includes the count for the FileRefs directly within the module, and not the submodules.
+
 // BuildTree constructs a hierarchy of Modules and Files for the given path entries.
 // It returns the Module representing the root folder.
 func BuildTree(fsys fs.FS, pathEntries []string) (*Module, error) {
