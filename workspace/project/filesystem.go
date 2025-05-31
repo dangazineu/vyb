@@ -15,7 +15,7 @@ import (
 // buildModuleFromFS constructs a hierarchy of Modules and Files for the given path entries.
 // It returns the Module representing the root folder.
 func buildModuleFromFS(fsys fs.FS, pathEntries []string) (*Module, error) {
-	// STEP 1: create a basic tree with empty token information so we can easily
+	// First, create a basic tree with empty token information so we can easily
 	// attach files to the correct folder hierarchy.
 	root := &Module{Name: ".", Modules: []*Module{}, Files: []*FileRef{}}
 
@@ -41,8 +41,7 @@ func buildModuleFromFS(fsys fs.FS, pathEntries []string) (*Module, error) {
 		parent.Files = append(parent.Files, fileRef)
 	}
 
-	// Collapse trivial single-child folders first (this keeps behaviour of the
-	// previous implementation and reduces noise before token collapsing).
+	// Collapse trivial single-child folders first.
 	collapseModules(root)
 
 	// At this point, we already have all the FileRefs and their token counts.
@@ -50,8 +49,10 @@ func buildModuleFromFS(fsys fs.FS, pathEntries []string) (*Module, error) {
 
 	rebuilt := rebuildModule(root)
 
+	// Now using the tree with token counts, collapse any modules that fewer tokens than the minimum.
 	collapseByTokens(rebuilt)
 
+	// Return a fresh copy of the tree with updated per-module token counts.
 	return rebuildModule(rebuilt), nil
 }
 
