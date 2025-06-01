@@ -36,7 +36,7 @@ func buildModuleFromFS(fsys fs.FS, pathEntries []string) (*Module, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to build file object for %s: %w", entry, err)
 		}
-
+		
 		parent := findOrCreateParentModule(root, entry)
 		parent.Files = append(parent.Files, fileRef)
 	}
@@ -49,7 +49,7 @@ func buildModuleFromFS(fsys fs.FS, pathEntries []string) (*Module, error) {
 
 	rebuilt := rebuildModule(root)
 
-	// Now using the tree with token counts, collapse any modules that fewer tokens than the minimum.
+	// Now using the tree with token counts, collapse any modules that have fewer tokens than minTokenCountPerModule.
 	collapseByTokens(rebuilt)
 
 	// Return a fresh copy of the tree with updated per-module token counts.
