@@ -161,24 +161,24 @@ func execute(cmd *cobra.Command, args []string, def *Definition) error {
 
 	// Validate that every file in the proposal is allowed to be modified.
 	invalidFiles := []string{}
-	for _, prop := range proposal.GetProposals() {
-		if !matcher.IsIncluded(rootFS, prop.GetFileName(), append(systemExclusionPatterns, def.ModificationExclusionPatterns...), def.ModificationInclusionPatterns) {
-			invalidFiles = append(invalidFiles, prop.GetFileName())
+	for _, prop := range proposal.Proposals {
+		if !matcher.IsIncluded(rootFS, prop.FileName, append(systemExclusionPatterns, def.ModificationExclusionPatterns...), def.ModificationInclusionPatterns) {
+			invalidFiles = append(invalidFiles, prop.FileName)
 		}
 	}
 	if len(invalidFiles) > 0 {
 		return fmt.Errorf("change proposal contains modifications to unallowed files: %v", invalidFiles)
 	}
 
-	if err := applyProposals(absRoot, proposal.GetProposals()); err != nil {
+	if err := applyProposals(absRoot, proposal.Proposals); err != nil {
 		return err
 	}
 
-	fmt.Printf("Change summary: %s\n\n", proposal.GetSummary())
-	fmt.Printf("Change description: %s\n\n", proposal.GetDescription())
+	fmt.Printf("Change summary: %s\n\n", proposal.Summary)
+	fmt.Printf("Change description: %s\n\n", proposal.Description)
 	fmt.Printf("Changed files: \n")
-	for _, file := range proposal.GetProposals() {
-		fmt.Printf("  %s -- delete? %v\n", file.GetFileName(), file.GetDelete())
+	for _, file := range proposal.Proposals {
+		fmt.Printf("  %s -- delete? %v\n", file.FileName, file.Delete)
 	}
 
 	return nil
@@ -187,21 +187,21 @@ func execute(cmd *cobra.Command, args []string, def *Definition) error {
 // applyProposals applies all file modifications as proposed by the LLM.
 func applyProposals(absRoot string, proposals []payload.FileChangeProposal) error {
 	for _, prop := range proposals {
-		absPath := filepath.Join(absRoot, prop.GetFileName())
-		if prop.GetDelete() {
+		absPath := filepath.Join(absRoot, prop.FileName)
+		if prop.Delete {
 			if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("failed to delete file %s: %w", absPath, err)
 			}
-			fmt.Printf("Deleted file: %s\n", prop.GetFileName())
+			fmt.Printf("Deleted file: %s\n", prop.FileName)
 		} else {
 			dir := filepath.Dir(absPath)
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", dir, err)
 			}
-			if err := os.WriteFile(absPath, []byte(prop.GetContent()), 0644); err != nil {
+			if err := os.WriteFile(absPath, []byte(prop.Content), 0644); err != nil {
 				return fmt.Errorf("failed to write to file %s: %w", absPath, err)
 			}
-			fmt.Printf("Modified file: %s\n", prop.GetFileName())
+			fmt.Printf("Modified file: %s\n", prop.FileName)
 		}
 	}
 	return nil

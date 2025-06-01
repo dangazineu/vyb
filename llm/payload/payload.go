@@ -43,30 +43,12 @@ type WorkspaceChangeProposal struct {
 	Proposals   []FileChangeProposal `json:"proposals"`
 }
 
-// GetDescription returns the long description used by the git commit body.
-func (w *WorkspaceChangeProposal) GetDescription() string { return w.Description }
-
-// GetSummary returns the short summary used by the git commit title.
-func (w *WorkspaceChangeProposal) GetSummary() string { return w.Summary }
-
-// GetProposals exposes the slice of individual file changes.
-func (w *WorkspaceChangeProposal) GetProposals() []FileChangeProposal { return w.Proposals }
-
 // FileChangeProposal represents a single file modification.
 type FileChangeProposal struct {
 	FileName string `json:"file_name"`
 	Content  string `json:"content"`
 	Delete   bool   `json:"delete"`
 }
-
-// GetFileName returns the affected file path.
-func (f *FileChangeProposal) GetFileName() string { return f.FileName }
-
-// GetContent returns the new file content (ignored when Delete == true).
-func (f *FileChangeProposal) GetContent() string { return f.Content }
-
-// GetDelete indicates whether the file must be deleted.
-func (f *FileChangeProposal) GetDelete() bool { return f.Delete }
 
 // ModuleContext captures contextual information for a module.
 type ModuleContext struct {
@@ -75,11 +57,6 @@ type ModuleContext struct {
 	InternalContext string `json:"internal_context,omitempty"`
 	PublicContext   string `json:"public_context,omitempty"`
 }
-
-func (m *ModuleContext) GetModuleName() string      { return m.Name }
-func (m *ModuleContext) GetExternalContext() string { return m.ExternalContext }
-func (m *ModuleContext) GetInternalContext() string { return m.InternalContext }
-func (m *ModuleContext) GetPublicContext() string   { return m.PublicContext }
 
 type ModuleContextRequest struct {
 	FilePaths  []string
@@ -117,13 +94,13 @@ func BuildModuleContextUserMessage(projectRoot fs.FS, request *ModuleContextRequ
 
 		// Compute this module's absolute (from project root) path.
 		currentPrefix := modulePrefix
-		if req.ModuleCtx != nil && req.ModuleCtx.GetModuleName() != "" {
+		if req.ModuleCtx != nil && req.ModuleCtx.Name != "" {
 			// When module names already hold the full path we simply adopt it.
-			currentPrefix = req.ModuleCtx.GetModuleName()
+			currentPrefix = req.ModuleCtx.Name
 		}
 
 		// Only emit a module header if we have a path or some context text.
-		if currentPrefix != "" && currentPrefix != "." || (req.ModuleCtx != nil && (req.ModuleCtx.GetExternalContext() != "" || req.ModuleCtx.GetInternalContext() != "" || req.ModuleCtx.GetPublicContext() != "")) {
+		if currentPrefix != "" && currentPrefix != "." || (req.ModuleCtx != nil && (req.ModuleCtx.ExternalContext != "" || req.ModuleCtx.InternalContext != "" || req.ModuleCtx.PublicContext != "")) {
 			writeModule(&sb, currentPrefix, req.ModuleCtx)
 		}
 
@@ -171,22 +148,22 @@ func writeModule(sb *strings.Builder, path string, context *ModuleContext) {
 	if sb == nil {
 		return
 	}
-	if path == "" && (context == nil || (context.GetExternalContext() == "" && context.GetInternalContext() == "" && context.GetPublicContext() == "")) {
+	if path == "" && (context == nil || (context.ExternalContext == "" && context.InternalContext == "" && context.PublicContext == "")) {
 		return
 	}
 	sb.WriteString(fmt.Sprintf("# %s\n", path))
 	if context != nil {
-		if context.GetExternalContext() != "" {
+		if context.ExternalContext != "" {
 			sb.WriteString("# External Context\n")
-			sb.WriteString(fmt.Sprintf("%s\n", context.GetExternalContext()))
+			sb.WriteString(fmt.Sprintf("%s\n", context.ExternalContext))
 		}
-		if context.GetInternalContext() != "" {
+		if context.InternalContext != "" {
 			sb.WriteString("# Internal Context\n")
-			sb.WriteString(fmt.Sprintf("%s\n", context.GetInternalContext()))
+			sb.WriteString(fmt.Sprintf("%s\n", context.InternalContext))
 		}
-		if context.GetPublicContext() != "" {
+		if context.PublicContext != "" {
 			sb.WriteString("# Public Context\n")
-			sb.WriteString(fmt.Sprintf("%s\n", context.GetPublicContext()))
+			sb.WriteString(fmt.Sprintf("%s\n", context.PublicContext))
 		}
 	}
 }
